@@ -270,4 +270,4 @@ developing the page against a service.
 
 MIT. See [LICENSE](LICENSE).
 
-Copyright (c) 2026 funlang.org.
+Copyright (c) 2026 Zhang Weidong <zwd@funlang.org>.

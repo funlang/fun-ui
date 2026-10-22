@@ -1,5 +1,5 @@
 @echo off
-rem Copyright (c) 2026 funlang.org
+rem Copyright (c) 2026 Zhang Weidong <zwd@funlang.org>
 rem
 rem Permission is hereby granted, free of charge, to any person obtaining a copy
 rem of this software and associated documentation files (the "Software"), to deal
@@ -19,7 +19,8 @@ rem LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM
 rem OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 rem SOFTWARE.
 
-rem Build libwv2.dll with Delphi 2006. Extra dcc32 switches are passed through.
+rem make-2006.bat: build libwv2.dll with Delphi 2006. Extra dcc32 switches are
+rem passed through.
 call "%~dp0setenv.bat"
 
 if not defined DELPHI2006 (

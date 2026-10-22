@@ -1,7 +1,5 @@
 @echo off
-rem ============================================================
-rem fun-ui WebView2 bridge build environment
-rem Copyright (c) 2026 funlang.org
+rem Copyright (c) 2026 Zhang Weidong <zwd@funlang.org>
 rem
 rem Permission is hereby granted, free of charge, to any person obtaining a copy
 rem of this software and associated documentation files (the "Software"), to deal
@@ -21,6 +19,8 @@ rem LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM
 rem OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 rem SOFTWARE.
 rem ============================================================
+rem setenv.bat: WebView2 bridge build environment.
+rem
 rem Edit the paths below to match your machine, then run
 rem make-2006.bat. You may also pre-set any of these variables
 rem in your shell or IDE; the `if not defined` guards let

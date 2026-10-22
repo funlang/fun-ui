@@ -254,4 +254,4 @@ WebSocket 连接。JavaScript 加载 `fun-bridge-ws.js`，它使用 `window.__ws
 
 MIT，见 [LICENSE](LICENSE)。
 
-版权所有 (c) 2026 funlang.org。
+版权所有 (c) 2026 张卫东 <zwd@funlang.org>。
