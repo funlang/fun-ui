@@ -1,0 +1,18 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Windows-centric Delphi and batch sources keep CRLF.
+[*.{pas,inc,dpr,dfm,cfg,bat}]
+end_of_line = crlf
+
+[*.{pas,inc,dpr,dfm,cfg,fun,js,bat}]
+indent_style = space
+indent_size = 2
+
+[*.pas]
+indent_size = 2

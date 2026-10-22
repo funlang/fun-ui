@@ -1,0 +1,57 @@
+# ===========================================================================
+# fun-ui - .gitignore
+# Generated build artifacts and editor files are not tracked.
+# ===========================================================================
+
+# ---- Pascal / Delphi build artifacts ----
+*.dcu
+*.dcp
+*.dpu
+*.ppu
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.map
+*.drc
+*.pdb
+*.stat
+*.or
+*.exe
+*.dll
+
+# Delphi / CodeGear IDE and project files
+*.dof
+*.dsk
+*.cfg
+*.local
+*.identcache
+*.projdata
+*.ddp
+*.res
+
+# WebView2 user data created at runtime
+CustomCache/
+
+# ---- Web tooling ----
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# ---- Logs and scratch output ----
+*.log
+*.tmp
+*.bak
+*.orig
+*.rej
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- Backup and temporary files (matches the Fun project conventions) ----
+*~
+~*.*
+*.~*
