@@ -268,6 +268,6 @@ developing the page against a service.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE). Release history is in [CHANGELOG.md](CHANGELOG.md).
 
 Copyright (c) 2026 Zhang Weidong <zwd@funlang.org>.
