@@ -33,9 +33,6 @@ class TestDispatcher = FdDispatcher()
   end fun;
 end class;
 
-var @ui2webkitdll = './src/prj/lib.webkitgtk/libui2webkitgtk.so';
-var @ui2RequireWebview = true;
-
 var PAGE = `<!doctype html>
 <html>
 <head><meta charset="utf-8"><title>webview-test</title></head>
@@ -59,11 +56,13 @@ form.jsDir = 'js';
 form.page = PAGE;
 form.dispatcher = TestDispatcher();
 form.SetSize(800, 600);
+form.hostLib = './src/prj/lib.webkitgtk/libui2webkitgtk.so';
+form.requireWebview = true;
 
 mark('before Start');
 var port = form.Start();
 var native = form.Native();
-mark('after Start, native=' & native & ', port=' & port);
+mark('after Start, native=' & native & ', port=' & port & ', error=' & form.lastError);
 
 // WebKit starts its web process asynchronously; give it a generous budget.
 for i = 1 to 2000 do

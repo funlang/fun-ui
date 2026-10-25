@@ -37,6 +37,9 @@ class Ui2Form = Ui2Proxy()
   var title  = @ui2FormTitle;
   var width  = @ui2FormWidth;
   var height = @ui2FormHeight;
+  var hostLib = @ui2webkitdll;
+  var requireWebview = @ui2RequireWebview;
+  var lastError = '';
 
   var _host = nil;
   var _native = false;
@@ -49,7 +52,7 @@ class Ui2Form = Ui2Proxy()
 
     if IsLinux() then
       try
-        _host = @ui2webkitdll;
+        _host = hostLib;
         var init = _host.getapi('ui2_gtk_init', ':i');
         if init.call() <> 0 then
           var show = _host.getapi('ui2_gtk_show', 'siis:i');
@@ -59,12 +62,16 @@ class Ui2Form = Ui2Proxy()
         end if;
       except
         _native = false;
+        lastError = '' & @;
       end try;
     end if;
 
     if not _native then
-      if @ui2RequireWebview then
-        raise 'Ui2Form: WebKitGTK host not available: ' & @ui2webkitdll;
+      if lastError = '' then
+        lastError = 'gtk init/show returned false';
+      end if;
+      if requireWebview then
+        raise 'Ui2Form: WebKitGTK host not available: ' & hostLib & ': ' & lastError;
       end if;
       this.OpenBrowser();
     end if;
