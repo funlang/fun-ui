@@ -14,10 +14,20 @@
 #include <gtk/gtk.h>
 #include <webkit2/webkit2.h>
 #include <stdio.h>
+#include <fenv.h>
 
 static GtkWidget *g_window = NULL;
 static GtkWidget *g_webview = NULL;
 static int g_closed = 1;
+
+// FPC's default x87 control word unmasks invalid-operation, divide-by-zero,
+// and overflow exceptions. GTK/WebKit/Skia contain floating-point operations
+// that raise these flags in normal use, which turns into SIGFPE (Fun reports
+// "Invalid floating point operation") and can corrupt the unwind. C libraries
+// expect the C default environment, so restore it before entering GTK.
+static void mask_fp_exceptions(void) {
+    fesetenv(FE_DFL_ENV);
+}
 
 static void on_destroy(GtkWidget *widget, gpointer data) {
     (void)widget;
@@ -26,6 +36,7 @@ static void on_destroy(GtkWidget *widget, gpointer data) {
 }
 
 int ui2_gtk_init(void) {
+    mask_fp_exceptions();
     if (!gtk_init_check(NULL, NULL)) {
         return 0;
     }
@@ -35,6 +46,7 @@ int ui2_gtk_init(void) {
 // Returns 1 on success, 0 on failure. The caller only needs a flag, so no
 // pointer crosses the Fun FFI boundary.
 int ui2_gtk_show(const char *url, int width, int height, const char *title) {
+    mask_fp_exceptions();
     fprintf(stderr, "ui2_gtk_show: enter\n");
     fflush(stderr);
     if (g_window != NULL) {
@@ -81,6 +93,7 @@ int ui2_gtk_show(const char *url, int width, int height, const char *title) {
 // Pump pending GTK/WebKit events without blocking. Returns 1 while the window
 // is alive, 0 after it was closed.
 int ui2_gtk_iterate(void) {
+    mask_fp_exceptions();
     while (gtk_events_pending()) {
         gtk_main_iteration_do(FALSE);
     }
@@ -92,6 +105,7 @@ int ui2_gtk_closed(void) {
 }
 
 int ui2_gtk_set_title(const char *title) {
+    mask_fp_exceptions();
     if (g_window == NULL) {
         return 0;
     }
@@ -100,6 +114,7 @@ int ui2_gtk_set_title(const char *title) {
 }
 
 int ui2_gtk_close(void) {
+    mask_fp_exceptions();
     if (g_window != NULL) {
         gtk_widget_destroy(g_window);
         g_window = NULL;
