@@ -80,6 +80,28 @@ jobs:
           WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS: "1"
           LIBGL_ALWAYS_SOFTWARE: "1"
         run: |
+          set +e
+          {
+            echo "--- environment ---"
+            pkg-config --modversion gtk+-3.0 webkit2gtk-4.1 || true
+            ldd src/prj/lib.webkitgtk/libui2webkitgtk.so || true
+            echo "--- test ---"
+          } > /tmp/webview.log 2>&1
           xvfb-run -a -s "-screen 0 1280x1024x24" \
             dbus-run-session -- \
-            "${{ steps.fun.outputs.funcmd }}" test/lib-ui2-webview-lnx-test.fun
+            "${{ steps.fun.outputs.funcmd }}" test/lib-ui2-webview-lnx-test.fun \
+            >> /tmp/webview.log 2>&1
+          rc=$?
+          cat /tmp/webview.log
+          if [ "$rc" -ne 0 ]; then
+            msg="$(tail -n 30 /tmp/webview.log | tr '\n' '|' | cut -c1-900)"
+            echo "::error title=webview test::$msg"
+          fi
+          exit "$rc"
+
+      - name: Upload WebKit test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: webview-log
+          path: /tmp/webview.log
