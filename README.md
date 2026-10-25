@@ -18,27 +18,27 @@ in a Chromium-based browser. Calls cross the boundary in both directions:
 
 Two transports are provided. The WebView2 transport embeds Chromium directly in
 a Fun window through a small Delphi DLL. The WebSocket transport carries the
-same messages over a socket instead of shared memory. Both share the same
-message format and JavaScript API. The current WebSocket implementation still
-hosts the page in the Windows WebView2 window; the roadmap below covers serving
-it to an external browser.
+same messages over a socket instead of shared memory. On Linux and macOS the
+WebSocket transport has no window at all: it serves the page and bridge scripts
+over HTTP and lets an ordinary browser connect. Both transports share the same
+message format and JavaScript API.
 
 ## Project status and roadmap
 
-**Status:** the initial open-source release targets Windows. The WebView2 host
-(`libwv2.dll`) and `Ui2Form` are Windows-only. `Ui2Proxy` is built on `Ui2Form`
-and loads the Windows `lib-winsock` backend.
+**Status:** the WebView2 host (`libwv2.dll`) and `Ui2Form` are Windows-only.
+The Windows `Ui2Proxy` remains form-based. On Linux and macOS,
+`lib-ui2-proxy-unx.fun` provides the same host API without a window or
+`libwv2`, and is selected automatically by `use 'lib-ui2-proxy.fun'`.
 
 **Goal:** offer the same Fun-side and JavaScript API on Windows, Linux and
 macOS, so a Fun program can serve a browser UI on every platform Fun supports.
 
-1. **Windows baseline (current).** WebView2 transport, WebSocket transport, FD
+1. **Windows baseline (done).** WebView2 transport, WebSocket transport, FD
    serialization, and the dispatcher/bridge implementations in this repository.
-2. **Portable WebSocket transport.** Split `Ui2Proxy` from the WebView2 form so
-   it can serve an external browser, then select `lib-winsock-lnx` on Linux and
-   `lib-winsock-unx` on macOS. The HTTP/WebSocket core in
-   `lib-winsock-base.fun` is already shared, so this is the shortest path to
-   running the browser UI outside Windows.
+2. **Portable WebSocket transport (done on Linux/macOS).** `Ui2Proxy` is split
+   from the WebView2 form and serves an external browser through the shared
+   HTTP/WebSocket core. The Windows form-based proxy remains for backward
+   compatibility.
 3. **Native webview backends.** Add Linux and macOS hosts behind the `Ui2Form`
    API, using WebKitGTK and WKWebView (or another embeddable engine), without
    changing the message protocol or the JavaScript bridge.
@@ -57,6 +57,7 @@ webview hosts, and the socket backend).
 | ---- | ------- |
 | [`fun/lib/lib-ui2.fun`](fun/lib/lib-ui2.fun) | `Ui2Form`: WebView2 host form, message framing, compression, binary-safe transfer. |
 | [`fun/lib/lib-ui2-proxy.fun`](fun/lib/lib-ui2-proxy.fun) | `Ui2Proxy`: WebSocket mode. Serves the page and tunnels binary messages through a local WebSocket. |
+| [`fun/lib/lib-ui2-proxy-unx.fun`](fun/lib/lib-ui2-proxy-unx.fun) | Windowless `Ui2Proxy` for Linux and macOS: HTTP page plus WebSocket, no WebView2. |
 | [`fun/lib/lib-fd-dispatcher.fun`](fun/lib/lib-fd-dispatcher.fun) | `FdDispatcher`: jCAL handler lookup, jRET replies, fCAL/fRET callbacks. |
 | [`fun/lib/lib-fd-dispatcher-async.fun`](fun/lib/lib-fd-dispatcher-async.fun) | `FdAsyncDispatcher`: runs jCAL handlers on the Fun async scheduler. |
 | [`fun/lib/lib-fd-dispatcher-proc.fun`](fun/lib/lib-fd-dispatcher-proc.fun) | File-queue dispatcher and worker for out-of-process UI back ends. |
@@ -75,6 +76,7 @@ fun-ui/
 ├── fun/lib/                 # Fun-side modules
 │   ├── lib-ui2.fun
 │   ├── lib-ui2-proxy.fun
+│   ├── lib-ui2-proxy-unx.fun
 │   ├── lib-fd-dispatcher.fun
 │   ├── lib-fd-dispatcher-async.fun
 │   └── lib-fd-dispatcher-proc.fun
@@ -83,12 +85,15 @@ fun-ui/
 │   ├── fd2.js
 │   ├── fun-bridge.js
 │   └── fun-bridge-ws.js
-└── src/prj/lib.wv2/         # Native WebView2 host (Windows, Delphi)
+├── src/prj/lib.wv2/         # Native WebView2 host (Windows, Delphi)
     ├── libwv2.dpr
     ├── wv2.pas
     ├── wv2.dfm
     ├── setenv.bat
     └── make-2006.bat
+└── test/                    # Loopback and bridge tests
+    ├── lib-ui2-proxy-unx-test.fun
+    └── fun-bridge-ws.test.js
 ```
 
 `fun-ui` does not contain the Fun language implementation. The modules in
@@ -107,6 +112,33 @@ fun-ui/
    calls.
 4. Keep `libwv2.dll` on the DLL search path; `lib-ui2.fun` accesses it through
    the global `@libwv2dll`.
+
+On Linux and macOS, skip `libwv2` and use the portable proxy instead:
+
+```fun
+use 'lib-ui2-proxy.fun';   // resolves to lib-ui2-proxy-unx.fun
+
+class AppDispatcher = FdDispatcher()
+  fun fd_ping(args)
+    result = new [pong: args[0]];
+  end fun;
+end class;
+
+var proxy = Ui2Proxy();
+proxy.port = 8278;          // 0 picks an ephemeral port
+proxy.jsDir = 'js';         // directory containing fd.js and fun-bridge-ws.js
+proxy.page = '<h1>Hello from Fun</h1>';
+proxy.dispatcher = AppDispatcher();
+var port = proxy.Start();   // non-blocking; returns the bound port
+?. proxy.Url();             // http://127.0.0.1:<port>/
+proxy.Run();                // blocking poll loop
+```
+
+`Ui2Proxy` injects `<script src="/fd.js">` and
+`<script src="/fun-bridge-ws.js">` into the served page unless the page already
+includes a bridge. Set `proxy.autoOpen = true` to launch the default browser.
+The HTTP server binds to `127.0.0.1` by default; set `proxy.ip = '0.0.0.0'` to
+serve other machines.
 
 ---
 
@@ -247,10 +279,16 @@ Event messages use the codes defined in `wv2.pas` (`MSG_ERROR`, `MSG_CREATED`,
 `window.__wsUrl` or `ws://<location.host>`. The frame format is identical to the
 WebView2 transport, so the dispatcher and page code do not change.
 
-The current implementation still shows the served page in the WebView2 window.
-Once the proxy is decoupled from `Ui2Form` (roadmap step 2), the same page can
-run in an external browser, including when the Fun process is remote or when
-developing the page against a service.
+On Linux and macOS the proxy runs on the same poll loop as
+`lib-winsock-unx.fun` and needs no window, `libwv2.dll`, or WebView2 runtime.
+`Start()` returns the bound port, `RunOnce(timeout)` drives one poll round for
+embedding, and `Run()` blocks until `Stop()`. `PostData` pushes an unsolicited
+frame to the most recent page connection. fCAL responses arrive as ordinary
+`fRET` messages, so `fun-bridge-ws.js` handles them without shared buffers.
+
+The Windows `lib-ui2-proxy.fun` still hosts the page in `Ui2Form`; the portable
+host is selected automatically on Linux and macOS by the platform-aware module
+loader.
 
 ---
 
@@ -258,11 +296,21 @@ developing the page against a service.
 
 - Fun 9.x runtime with the standard library modules listed above.
 - Windows with WebView2 for `libwv2.dll` and `Ui2Form`.
-- The first release is Windows-only. Cross-platform support, including the
-  planned WebSocket-only path that does not need WebView2, is described in
-  [Project status and roadmap](#project-status-and-roadmap).
+- Linux and macOS for the portable WebSocket host (`lib-ui2-proxy-unx.fun`),
+  using the platform's `lib-winsock` backend. No window or WebView2 runtime is
+  required.
 - Chromium-based browsers for `fun-bridge.js` and `fun-bridge-ws.js`, because
   the bridges use `CompressionStream` and the `gbk` text-encoding label.
+
+## Tests
+
+```bash
+# HTTP + WebSocket + jCAL/jRET + fCAL/fRET + compression (Linux/macOS)
+funcmd test/lib-ui2-proxy-unx-test.fun
+
+# Browser bridge unit test (Node 18+; CompressionStream is required)
+node --experimental-websocket test/fun-bridge-ws.test.js
+```
 
 ---
 

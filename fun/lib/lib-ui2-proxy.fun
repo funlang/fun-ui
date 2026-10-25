@@ -3,6 +3,11 @@
 //
 // lib-ui2-proxy: WebSocket mode. Serves the page and tunnels binary messages
 // through a local WebSocket.
+//
+// This is the Windows, form-based implementation. On Linux and macOS the
+// platform-aware `use 'lib-ui2-proxy.fun'` resolves to
+// lib-ui2-proxy-unx.fun, which serves an external browser without Ui2Form or
+// libwv2.
 
 use 'lib-ui2.fun';
 use 'lib-ajax.fun';

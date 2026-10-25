@@ -17,24 +17,25 @@
 
 项目提供两种传输方式。WebView2 方式通过一个很小的 Delphi DLL 把 Chromium
 直接嵌入 Fun 窗口；WebSocket 方式用套接字代替共享内存来传递同样的消息。
-两种方式共用同一套消息格式和 JavaScript API。当前 WebSocket 实现仍然把页面
-放在 Windows 的 WebView2 窗口中，下面的路线图会把它改为提供给外部浏览器。
+两种方式共用同一套消息格式和 JavaScript API。在 Linux 和 macOS 上，
+WebSocket 方式不再需要窗口：它通过 HTTP 提供页面和桥接脚本，让普通浏览器
+直接连接。
 
 ## 项目状态与路线图
 
-**状态：** 首次开源发布面向 Windows。WebView2 宿主（`libwv2.dll`）和
-`Ui2Form` 目前仅支持 Windows。`Ui2Proxy` 基于 `Ui2Form`，并加载 Windows 的
-`lib-winsock` 后端。
+**状态：** WebView2 宿主（`libwv2.dll`）和 `Ui2Form` 仅支持 Windows；
+Windows 的 `Ui2Proxy` 仍然基于窗体。在 Linux 和 macOS 上，
+`lib-ui2-proxy-unx.fun` 提供同一套宿主 API，不需要窗口或 `libwv2`，
+`use 'lib-ui2-proxy.fun'` 会自动选中它。
 
 **目标：** 在 Windows、Linux 和 macOS 上提供同一套 Fun 侧和 JavaScript API，
 让 Fun 程序可以在 Fun 支持的所有平台上提供浏览器界面。
 
-1. **Windows 基线（当前）。** WebView2 传输、WebSocket 传输、FD 序列化，以及
+1. **Windows 基线（已完成）。** WebView2 传输、WebSocket 传输、FD 序列化，以及
    本仓库中的调度器和桥接实现。
-2. **可移植的 WebSocket 传输。** 把 `Ui2Proxy` 与 WebView2 窗体解耦，使它能
-   服务外部浏览器；然后在 Linux 上选择 `lib-winsock-lnx`，在 macOS 上选择
-   `lib-winsock-unx`。HTTP/WebSocket 核心已经在 `lib-winsock-base.fun` 中共享，
-   这是把浏览器界面带出 Windows 的最短路径。
+2. **可移植的 WebSocket 传输（Linux/macOS 已完成）。** 把 `Ui2Proxy` 与
+   WebView2 窗体解耦，通过共享的 HTTP/WebSocket 核心服务外部浏览器；
+   Windows 的窗体代理保留以兼容旧代码。
 3. **原生 webview 后端。** 在 `Ui2Form` API 之后增加 Linux 和 macOS 宿主，
    使用 WebKitGTK 和 WKWebView（或其他可嵌入引擎），消息协议和 JavaScript
    桥接保持不变。
@@ -51,6 +52,7 @@
 | ---- | ---- |
 | [`fun/lib/lib-ui2.fun`](fun/lib/lib-ui2.fun) | `Ui2Form`：WebView2 宿主窗口、消息分帧、压缩、二进制传输。 |
 | [`fun/lib/lib-ui2-proxy.fun`](fun/lib/lib-ui2-proxy.fun) | `Ui2Proxy`：WebSocket 方式，提供页面并通过本地 WebSocket 转发二进制消息。 |
+| [`fun/lib/lib-ui2-proxy-unx.fun`](fun/lib/lib-ui2-proxy-unx.fun) | Linux/macOS 的无窗口 `Ui2Proxy`：HTTP 页面加 WebSocket，不需要 WebView2。 |
 | [`fun/lib/lib-fd-dispatcher.fun`](fun/lib/lib-fd-dispatcher.fun) | `FdDispatcher`：jCAL 处理函数查找、jRET 应答、fCAL/fRET 回调。 |
 | [`fun/lib/lib-fd-dispatcher-async.fun`](fun/lib/lib-fd-dispatcher-async.fun) | `FdAsyncDispatcher`：在 Fun 异步调度器中运行 jCAL 处理函数。 |
 | [`fun/lib/lib-fd-dispatcher-proc.fun`](fun/lib/lib-fd-dispatcher-proc.fun) | 基于文件队列的调度器和 worker，用于进程外 UI 后端。 |
@@ -69,6 +71,7 @@ fun-ui/
 ├── fun/lib/                 # Fun 侧模块
 │   ├── lib-ui2.fun
 │   ├── lib-ui2-proxy.fun
+│   ├── lib-ui2-proxy-unx.fun
 │   ├── lib-fd-dispatcher.fun
 │   ├── lib-fd-dispatcher-async.fun
 │   └── lib-fd-dispatcher-proc.fun
@@ -77,12 +80,15 @@ fun-ui/
 │   ├── fd2.js
 │   ├── fun-bridge.js
 │   └── fun-bridge-ws.js
-└── src/prj/lib.wv2/         # 原生 WebView2 宿主（Windows、Delphi）
+├── src/prj/lib.wv2/         # 原生 WebView2 宿主（Windows、Delphi）
     ├── libwv2.dpr
     ├── wv2.pas
     ├── wv2.dfm
     ├── setenv.bat
     └── make-2006.bat
+└── test/                    # 回环与桥接测试
+    ├── lib-ui2-proxy-unx-test.fun
+    └── fun-bridge-ws.test.js
 ```
 
 `fun-ui` 不包含 Fun 语言实现。`fun/lib` 中的模块使用相邻
@@ -100,6 +106,32 @@ fun-ui/
    `dispatcher` 属性，这样 `fd_*` 方法就能处理 jCAL 调用。
 4. 把 `libwv2.dll` 放入 DLL 搜索路径；`lib-ui2.fun` 通过全局 `@libwv2dll`
    访问它。
+
+在 Linux 和 macOS 上不需要 `libwv2`，改用可移植代理：
+
+```fun
+use 'lib-ui2-proxy.fun';   // 自动解析到 lib-ui2-proxy-unx.fun
+
+class AppDispatcher = FdDispatcher()
+  fun fd_ping(args)
+    result = new [pong: args[0]];
+  end fun;
+end class;
+
+var proxy = Ui2Proxy();
+proxy.port = 8278;          // 0 表示随机端口
+proxy.jsDir = 'js';         // 包含 fd.js 和 fun-bridge-ws.js 的目录
+proxy.page = '<h1>Hello from Fun</h1>';
+proxy.dispatcher = AppDispatcher();
+var port = proxy.Start();   // 非阻塞，返回实际端口
+?. proxy.Url();             // http://127.0.0.1:<port>/
+proxy.Run();                // 阻塞轮询循环
+```
+
+`Ui2Proxy` 会向页面注入 `<script src="/fd.js">` 和
+`<script src="/fun-bridge-ws.js">`，除非页面已经包含桥接脚本。设置
+`proxy.autoOpen = true` 可自动打开默认浏览器。HTTP 服务默认绑定
+`127.0.0.1`；需要供其他机器访问时设置 `proxy.ip = '0.0.0.0'`。
 
 ---
 
@@ -233,9 +265,14 @@ WebSocket 连接。JavaScript 加载 `fun-bridge-ws.js`，它使用 `window.__ws
 或 `ws://<location.host>`。帧格式与 WebView2 方式完全一致，因此调度器和页面
 代码无需修改。
 
-当前实现仍然在 WebView2 窗口中显示提供的页面。把代理与 `Ui2Form` 解耦
-（路线图第 2 步）后，同一个页面就可以运行在外部浏览器中，也适用于 Fun 进程
-位于远端或针对服务开发页面的场景。
+在 Linux 和 macOS 上，代理运行在与 `lib-winsock-unx.fun` 相同的 poll
+循环上，不需要窗口、`libwv2.dll` 或 WebView2 运行时。`Start()` 返回绑定
+端口，`RunOnce(timeout)` 供宿主驱动单轮轮询，`Run()` 阻塞到 `Stop()`。
+`PostData` 向最近连接的页面推送一帧；fCAL 的应答以普通 `fRET` 消息返回，
+`fun-bridge-ws.js` 不需要共享缓冲区即可处理。
+
+Windows 的 `lib-ui2-proxy.fun` 仍然把页面放在 `Ui2Form` 中；平台感知的模块
+加载器会在 Linux 和 macOS 上自动选择可移植实现。
 
 ---
 
@@ -243,10 +280,20 @@ WebSocket 连接。JavaScript 加载 `fun-bridge-ws.js`，它使用 `window.__ws
 
 - Fun 9.x 运行时，并包含上面列出的标准库模块。
 - `libwv2.dll` 和 `Ui2Form` 需要 Windows 与 WebView2。
-- 首次发布仅支持 Windows。包括计划中的、无需 WebView2 的纯 WebSocket 方式在内
-  的跨平台支持，见[项目状态与路线图](#项目状态与路线图)。
+- Linux 和 macOS 可使用可移植 WebSocket 宿主（`lib-ui2-proxy-unx.fun`），
+  使用平台自带的 `lib-winsock` 后端，不需要窗口或 WebView2 运行时。
 - `fun-bridge.js` 和 `fun-bridge-ws.js` 需要 Chromium 内核浏览器，因为桥接
   使用了 `CompressionStream` 和 `gbk` 文本编码标签。
+
+## 测试
+
+```bash
+# HTTP + WebSocket + jCAL/jRET + fCAL/fRET + 压缩（Linux/macOS）
+funcmd test/lib-ui2-proxy-unx-test.fun
+
+# 浏览器桥接单元测试（Node 18+，需要 CompressionStream）
+node --experimental-websocket test/fun-bridge-ws.test.js
+```
 
 ---
 

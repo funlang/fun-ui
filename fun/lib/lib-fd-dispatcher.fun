@@ -100,7 +100,8 @@ class FdDispatcher(args)
     _jsCallbacks[id] = callback;
   end fun;
 
-  // Handle an fRET result (invoked by Ui2Form on MSG_FCAL_RESULT)
+  // Handle an fRET result (invoked by Ui2Form on MSG_FCAL_RESULT, or by the
+  // WebSocket host when an fRET frame arrives)
   fun handleFret(fretPayload)
     var obj = fretPayload.getJson(fd: true);
     if obj = nil then return; end if;

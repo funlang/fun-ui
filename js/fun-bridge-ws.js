@@ -16,6 +16,33 @@
   const callbacks = Object.create(null);
   let nextId = 1;
 
+  // ---------- build the length-prefixed block ----------
+  async function buildBlock(bytes) {
+    const compressed = await compressIfNeeded(bytes);
+    let compressFlag = 0;
+    if (compressed !== bytes) {
+      bytes = compressed;
+      compressFlag = 0x80000000;
+    }
+    const totalLen = bytes.length;
+    const lenWithFlag = totalLen | compressFlag;
+    const block = new Uint8Array(4 + totalLen);
+    block[0] = lenWithFlag & 0xFF;
+    block[1] = (lenWithFlag >> 8) & 0xFF;
+    block[2] = (lenWithFlag >> 16) & 0xFF;
+    block[3] = (lenWithFlag >> 24) & 0xFF;
+    block.set(bytes, 4);
+    return block;
+  }
+
+  function sendBlock(block) {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(block.buffer);
+    } else {
+      ws.addEventListener('open', () => ws.send(block.buffer), { once: true });
+    }
+  }
+
   async function compressIfNeeded(data) {
     const compressEnabled = window.__funCompress || false;
     const compressMinSize = window.__funCompressMinSize || 512;
@@ -73,29 +100,39 @@
 
     const msg = { type: 'jCAL', id, name, args: args || [], timeout: timeout ?? 0 };
     const fdStr = FD.stringify(msg);
-    let bytes = new TextEncoder('gbk').encode(fdStr);
+    const bytes = new TextEncoder('gbk').encode(fdStr);
+    buildBlock(bytes).then(sendBlock);
+  }
 
-    compressIfNeeded(bytes).then(compressed => {
-      let compressFlag = 0;
-      if (compressed !== bytes) {
-        bytes = compressed;
-        compressFlag = 0x80000000;
-      }
-      const totalLen = bytes.length;
-      const lenWithFlag = totalLen | compressFlag;
-      const block = new Uint8Array(4 + totalLen);
-      block[0] = lenWithFlag & 0xFF;
-      block[1] = (lenWithFlag >> 8) & 0xFF;
-      block[2] = (lenWithFlag >> 16) & 0xFF;
-      block[3] = (lenWithFlag >> 24) & 0xFF;
-      block.set(bytes, 4);
+  // ---------- fCAL dispatch ----------
+  class FdDispatcherJS {
+    constructor() { this._handlers = Object.create(null); }
+    register(name, fn) { this._handlers[name] = fn; }
+    getHandler(name) { return this._handlers[name]; }
+  }
+  if (!window.__fdDispatcher) {
+    window.__fdDispatcher = new FdDispatcherJS();
+  }
 
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(block.buffer);
-      } else {
-        ws.addEventListener('open', () => ws.send(block.buffer), { once: true });
+  async function handleFCAL(msg) {
+    const { name, args, id } = msg;
+    const handler = window.__fdDispatcher.getHandler(name);
+    let err = false, val;
+    if (handler) {
+      try {
+        val = await handler(args);
+      } catch (e) {
+        err = true;
+        val = e.message;
       }
-    });
+    } else {
+      err = true;
+      val = 'method not found: ' + name;
+    }
+
+    const fretPayload = FD.stringify({ type: 'fRET', id, val, err });
+    const fretBytes = new TextEncoder('gbk').encode(fretPayload);
+    sendBlock(await buildBlock(fretBytes));
   }
 
   ws.addEventListener('message', async (e) => {
@@ -125,6 +162,8 @@
           delete callbacks[id];
           cb(val, err);
         }
+      } else if (msg && msg.type === 'fCAL') {
+        await handleFCAL(msg);
       }
     } catch (err) {
       console.error('fun-bridge-ws: receive error', err);

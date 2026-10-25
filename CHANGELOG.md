@@ -4,6 +4,24 @@ All notable changes to fun-ui are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Portable WebSocket host** (`fun/lib/lib-ui2-proxy-unx.fun`): a windowless
+  `Ui2Proxy` for Linux and macOS. It serves the page and bridge scripts over
+  HTTP, tunnels the unchanged length-prefixed frames over WebSocket, and runs
+  on the platform `lib-winsock` poll loop. `use 'lib-ui2-proxy.fun'` selects it
+  automatically on Unix; the Windows form-based proxy is unchanged.
+- HTTP asset serving and automatic bridge-script injection for the portable
+  host (`fd.js`, `fun-bridge-ws.js`, optional `fd2.js`).
+- `fun-bridge-ws.js` now handles `fCAL` and answers with an `fRET` frame, so
+  Fun-initiated JavaScript calls work without the WebView2 shared buffer.
+- `Start()`, `RunOnce()`, `Run()`, `Stop()`, `LocalPort()`, `Url()`,
+  `OpenBrowser()`, `SetPage()` and `PostData()` on the portable host.
+- Tests: `test/lib-ui2-proxy-unx-test.fun` (HTTP, WebSocket, jCAL/jRET,
+  fCAL/fRET, compression) and `test/fun-bridge-ws.test.js`.
+
 ## [1.0.0] - 2026-10-24
 
 First open-source release.
