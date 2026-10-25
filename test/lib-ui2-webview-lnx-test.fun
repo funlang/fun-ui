@@ -19,6 +19,13 @@ use '../fun/lib/lib-ui2-unx.fun';
 
 var @ready = false;
 
+fun mark(s)
+  '/tmp/ui2-webview-progress.txt'.save('' & s & 10.toChar(), append: true);
+end fun;
+
+'/tmp/ui2-webview-progress.txt'.save('', append: false);
+mark('test loaded');
+
 class TestDispatcher = FdDispatcher()
   fun fd_native_ready(args)
     @ready = true;
@@ -53,8 +60,10 @@ form.page = PAGE;
 form.dispatcher = TestDispatcher();
 form.SetSize(800, 600);
 
+mark('before Start');
 var port = form.Start();
 var native = form.Native();
+mark('after Start, native=' & native & ', port=' & port);
 
 // WebKit starts its web process asynchronously; give it a generous budget.
 for i = 1 to 2000 do
@@ -62,7 +71,9 @@ for i = 1 to 2000 do
   form.RunOnce(10);
 end do;
 
+mark('after loop, ready=' & @ready);
 form.Stop();
+mark('stopped');
 
 ?. 'bound port: ' & (port > 0);
 ?. 'native window: ' & native;

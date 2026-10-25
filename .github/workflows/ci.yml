@@ -93,8 +93,17 @@ jobs:
             >> /tmp/webview.log 2>&1
           rc=$?
           cat /tmp/webview.log
+          echo "--- progress ---"
+          cat /tmp/ui2-webview-progress.txt 2>/dev/null || true
           if [ "$rc" -ne 0 ]; then
-            msg="$(tail -n 30 /tmp/webview.log | tr '\n' '|' | cut -c1-900)"
+            {
+              echo "rc=$rc"
+              echo "--- progress ---"
+              cat /tmp/ui2-webview-progress.txt 2>/dev/null || true
+              echo "--- test log tail ---"
+              tail -n 40 /tmp/webview.log
+            } > /tmp/webview-error.txt
+            msg="$(tr '\n' '|' < /tmp/webview-error.txt | cut -c1-2000)"
             echo "::error title=webview test::$msg"
           fi
           exit "$rc"
