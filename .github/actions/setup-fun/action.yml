@@ -1,0 +1,113 @@
+# Build the Fun interpreter once per job, with caching.
+#
+# This is the same build sequence as funlang/fun's Linux CI:
+# FPC 3.2.2 -> vendored PCRE/TCC -> make-linux-x86_64.sh.
+#
+# Outputs:
+#   funcmd   absolute path to the built funcmd
+#   fun_root absolute path to the Fun checkout's fun/ directory (contains lib/)
+#
+# Note: the action checks out Fun at ./fun-src relative to the workspace. The
+# caller should check out fun-ui at the workspace root.
+
+name: setup-fun
+description: Check out and build the Fun interpreter
+
+inputs:
+  ref:
+    description: funlang/fun git ref
+    required: false
+    default: v9.4.6
+
+outputs:
+  funcmd:
+    description: Absolute path to funcmd
+    value: ${{ steps.paths.outputs.funcmd }}
+  fun_root:
+    description: Absolute path to the Fun runtime directory (contains lib/)
+    value: ${{ steps.paths.outputs.fun_root }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check out Fun
+      uses: actions/checkout@v4
+      with:
+        repository: funlang/fun
+        ref: ${{ inputs.ref }}
+        path: fun-src
+
+    - name: Resolve Fun paths
+      id: paths
+      shell: bash
+      run: |
+        echo "fun_root=$GITHUB_WORKSPACE/fun-src/fun" >> "$GITHUB_OUTPUT"
+        echo "funcmd=$GITHUB_WORKSPACE/fun-src/fun/funcmd" >> "$GITHUB_OUTPUT"
+
+    - name: Cache Free Pascal 3.2.2
+      id: cache-fpc
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/fpc-3.2.2
+          ~/.fpc.cfg
+        key: fpc-3.2.2-x86_64-linux-${{ inputs.ref }}
+
+    - name: Install Free Pascal 3.2.2
+      if: steps.cache-fpc.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -e
+        cd "$RUNNER_TEMP"
+        curl -fsSL --retry 3 -o fpc.tar \
+          "https://downloads.sourceforge.net/project/freepascal/Linux/3.2.2/fpc-3.2.2.x86_64-linux.tar"
+        mkdir -p fpc && tar -xf fpc.tar -C fpc
+        cd fpc/fpc-3.2.2.*-linux
+        printf '%s\n\n\n\n\n\n\n\n\n\n' "$HOME/fpc-3.2.2" | ./install.sh
+
+    - name: Put fpc on PATH
+      shell: bash
+      run: echo "$HOME/fpc-3.2.2/bin" >> "$GITHUB_PATH"
+
+    - name: Cache third-party C sources
+      id: cache-third
+      uses: actions/cache@v4
+      with:
+        path: fun-src/src/3rd
+        key: fun-third-${{ inputs.ref }}-${{ hashFiles('fun-src/src/prj/fun/fetch-3rd-party.sh') }}
+
+    - name: Fetch third-party C sources
+      if: steps.cache-third.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: fun-src
+      run: src/prj/fun/fetch-3rd-party.sh
+
+    - name: Cache funcmd
+      id: cache-funcmd
+      uses: actions/cache@v4
+      with:
+        path: |
+          fun-src/src/prj/fun/funcmd
+          fun-src/src/prj/fun/libtcc.so
+        key: funcmd-${{ inputs.ref }}-linux-x86_64
+
+    - name: Build funcmd
+      if: steps.cache-funcmd.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: fun-src/src/prj/fun
+      run: |
+        ./make-linux-x86_64.sh > "$RUNNER_TEMP/build-fun.log" 2>&1 || {
+          tail -n 60 "$RUNNER_TEMP/build-fun.log"
+          exit 1
+        }
+        tail -n 5 "$RUNNER_TEMP/build-fun.log"
+
+    - name: Publish funcmd
+      shell: bash
+      working-directory: fun-src
+      run: |
+        cp -f src/prj/fun/funcmd fun/funcmd
+        if [ -f src/prj/fun/libtcc.so ]; then
+          cp -f src/prj/fun/libtcc.so fun/libtcc.so
+        fi
+        ./fun/funcmd --version
