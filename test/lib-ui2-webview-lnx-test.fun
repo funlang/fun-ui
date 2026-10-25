@@ -71,4 +71,5 @@ if native and @ready then
   ?. 'RESULT: OK';
 else
   ?. 'RESULT: FAIL';
+  raise 'native window test failed: native=' & native & ', ready=' & @ready;
 end if;
