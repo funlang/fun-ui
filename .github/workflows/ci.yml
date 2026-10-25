@@ -87,7 +87,7 @@ jobs:
             ldd src/prj/lib.webkitgtk/libui2webkitgtk.so || true
             echo "--- test ---"
           } > /tmp/webview.log 2>&1
-          xvfb-run -a -s "-screen 0 1280x1024x24" \
+          timeout 90s xvfb-run -a -s "-screen 0 1280x1024x24" \
             dbus-run-session -- \
             "${{ steps.fun.outputs.funcmd }}" test/lib-ui2-webview-lnx-test.fun \
             >> /tmp/webview.log 2>&1
