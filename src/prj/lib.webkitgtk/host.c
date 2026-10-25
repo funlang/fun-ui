@@ -115,12 +115,25 @@ int ui2_gtk_set_title(const char *title) {
 
 int ui2_gtk_close(void) {
     mask_fp_exceptions();
+    if (g_webview != NULL) {
+        webkit_web_view_stop_loading(WEBKIT_WEB_VIEW(g_webview));
+    }
     if (g_window != NULL) {
         gtk_widget_destroy(g_window);
         g_window = NULL;
     }
     g_webview = NULL;
     g_closed = 1;
+    // WebKit terminates its web/network processes asynchronously. Drain the
+    // main context briefly so they are reaped before the process exits;
+    // otherwise Fun's finalization can race with a live WebKit thread.
+    gint64 deadline = g_get_monotonic_time() + 1000000; // 1 second
+    while (g_get_monotonic_time() < deadline) {
+        while (gtk_events_pending()) {
+            gtk_main_iteration_do(FALSE);
+        }
+        g_usleep(10000);
+    }
     return 1;
 }
 
