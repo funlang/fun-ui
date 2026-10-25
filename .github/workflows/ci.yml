@@ -1,0 +1,115 @@
+# Continuous integration for fun-ui.
+#
+# Linux job:
+#   1. build the Fun interpreter from the pinned funlang/fun tag (cached),
+#   2. run the portable WebSocket loopback test,
+#   3. run the browser bridge unit test.
+#
+# The Fun build is the same sequence as funlang/fun's own Linux CI: FPC 3.2.2,
+# vendored PCRE/TCC, then make-linux-x86_64.sh. Caching the binary makes the
+# common case (fun-ui changes only) a few seconds instead of a full rebuild.
+
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FUN_REF: v9.4.6
+
+jobs:
+  linux-loopback:
+    name: linux-loopback
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out fun-ui
+        uses: actions/checkout@v4
+        with:
+          path: fun-ui
+
+      - name: Check out Fun
+        uses: actions/checkout@v4
+        with:
+          repository: funlang/fun
+          ref: ${{ env.FUN_REF }}
+          path: fun
+
+      - name: Cache Free Pascal 3.2.2
+        id: cache-fpc
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/fpc-3.2.2
+            ~/.fpc.cfg
+          key: fpc-3.2.2-x86_64-linux-${{ env.FUN_REF }}
+
+      - name: Install Free Pascal 3.2.2
+        if: steps.cache-fpc.outputs.cache-hit != 'true'
+        run: |
+          set -e
+          cd "$RUNNER_TEMP"
+          curl -fsSL --retry 3 -o fpc.tar \
+            "https://downloads.sourceforge.net/project/freepascal/Linux/3.2.2/fpc-3.2.2.x86_64-linux.tar"
+          mkdir -p fpc && tar -xf fpc.tar -C fpc
+          cd fpc/fpc-3.2.2.*-linux
+          printf '%s\n\n\n\n\n\n\n\n\n\n' "$HOME/fpc-3.2.2" | ./install.sh
+
+      - name: Put fpc on PATH
+        run: echo "$HOME/fpc-3.2.2/bin" >> "$GITHUB_PATH"
+
+      - name: Cache third-party C sources
+        id: cache-third
+        uses: actions/cache@v4
+        with:
+          path: fun/src/3rd
+          key: fun-third-${{ env.FUN_REF }}-${{ hashFiles('fun/src/prj/fun/fetch-3rd-party.sh') }}
+
+      - name: Fetch third-party C sources
+        if: steps.cache-third.outputs.cache-hit != 'true'
+        working-directory: fun
+        run: src/prj/fun/fetch-3rd-party.sh
+
+      - name: Cache funcmd
+        id: cache-funcmd
+        uses: actions/cache@v4
+        with:
+          path: |
+            fun/src/prj/fun/funcmd
+            fun/src/prj/fun/libtcc.so
+          key: funcmd-${{ env.FUN_REF }}-linux-x86_64
+
+      - name: Build funcmd
+        if: steps.cache-funcmd.outputs.cache-hit != 'true'
+        working-directory: fun/src/prj/fun
+        run: |
+          ./make-linux-x86_64.sh > "$RUNNER_TEMP/build-fun.log" 2>&1 || {
+            tail -n 60 "$RUNNER_TEMP/build-fun.log"
+            exit 1
+          }
+          tail -n 5 "$RUNNER_TEMP/build-fun.log"
+
+      - name: Publish funcmd
+        working-directory: fun
+        run: |
+          cp -f src/prj/fun/funcmd fun/funcmd
+          if [ -f src/prj/fun/libtcc.so ]; then
+            cp -f src/prj/fun/libtcc.so fun/libtcc.so
+          fi
+          ./fun/funcmd --version
+
+      - name: Fun loopback test
+        working-directory: fun-ui
+        env:
+          FUN_PATH: ${{ github.workspace }}/fun/fun/lib
+        run: ../fun/fun/funcmd test/lib-ui2-proxy-unx-test.fun
+
+      - name: Browser bridge unit test
+        working-directory: fun-ui
+        run: node test/fun-bridge-ws.test.js
