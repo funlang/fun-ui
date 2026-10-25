@@ -94,15 +94,20 @@ class Ui2Form = Ui2Proxy()
 
   fun RunOnce(timeout)
     if _native then
+      _trace('iterate begin');
       var iterate = _host.getapi('ui2_gtk_iterate', ':i');
-      if iterate.call() = 0 then
+      var alive = iterate.call();
+      _trace('iterate returned ' & alive);
+      if alive = 0 then
         // The user closed the native window. Close the server too.
         this.Stop();
         result = 0;
         return;
       end if;
     end if;
+    _trace('proxy runonce begin');
     result = base.RunOnce(timeout);
+    _trace('proxy runonce returned ' & result);
   end fun;
 
   fun Run(timeout)

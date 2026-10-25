@@ -29,6 +29,7 @@ mark('test loaded');
 class TestDispatcher = FdDispatcher()
   fun fd_native_ready(args)
     @ready = true;
+    mark('native_ready received');
     result = new [ok: true];
   end fun;
 end class;
@@ -66,10 +67,15 @@ var native = form.Native();
 mark('after Start, native=' & native & ', port=' & port & ', error=' & form.lastError);
 
 // WebKit starts its web process asynchronously; give it a generous budget.
-for i = 1 to 2000 do
-  exit when @ready;
-  form.RunOnce(10);
-end do;
+try
+  for i = 1 to 2000 do
+    exit when @ready;
+    form.RunOnce(10);
+  end do;
+except
+  mark('loop error: ' & @);
+  raise @;
+end try;
 
 mark('after loop, ready=' & @ready);
 form.Stop();
