@@ -25,8 +25,9 @@ WebSocket 方式不再需要窗口：它通过 HTTP 提供页面和桥接脚本�
 
 **状态：** WebView2 宿主（`libwv2.dll`）和 `Ui2Form` 仅支持 Windows；
 Windows 的 `Ui2Proxy` 仍然基于窗体。在 Linux 和 macOS 上，
-`lib-ui2-proxy-unx.fun` 提供同一套宿主 API，不需要窗口或 `libwv2`，
-`use 'lib-ui2-proxy.fun'` 会自动选中它。
+`lib-ui2-proxy-unx.fun` 提供同一套宿主 API，不需要窗口或 `libwv2`。
+在 Linux 上，`lib-ui2-unx.fun` 还可以把页面嵌入 GTK3/WebKit2GTK 窗口；
+macOS 目前回退到默认浏览器。
 
 **目标：** 在 Windows、Linux 和 macOS 上提供同一套 Fun 侧和 JavaScript API，
 让 Fun 程序可以在 Fun 支持的所有平台上提供浏览器界面。
@@ -36,9 +37,9 @@ Windows 的 `Ui2Proxy` 仍然基于窗体。在 Linux 和 macOS 上，
 2. **可移植的 WebSocket 传输（Linux/macOS 已完成）。** 把 `Ui2Proxy` 与
    WebView2 窗体解耦，通过共享的 HTTP/WebSocket 核心服务外部浏览器；
    Windows 的窗体代理保留以兼容旧代码。
-3. **原生 webview 后端。** 在 `Ui2Form` API 之后增加 Linux 和 macOS 宿主，
-   使用 WebKitGTK 和 WKWebView（或其他可嵌入引擎），消息协议和 JavaScript
-   桥接保持不变。
+3. **原生 webview 后端（Linux 已完成，macOS 待做）。** Linux 的 `Ui2Form`
+   把第 2 步的 WebSocket 页面装入 GTK3/WebKit2GTK 窗口，消息协议和
+   JavaScript 桥接保持不变。macOS 的 WKWebView 宿主尚未实现，目前回退浏览器。
 4. **发布工程。** 各平台构建脚本、CI 覆盖、打包示例和兼容性矩阵。
 
 上述步骤中，线协议和 JavaScript API 计划保持稳定。平台相关代码应限制在宿主
@@ -53,6 +54,7 @@ Windows 的 `Ui2Proxy` 仍然基于窗体。在 Linux 和 macOS 上，
 | [`fun/lib/lib-ui2.fun`](fun/lib/lib-ui2.fun) | `Ui2Form`：WebView2 宿主窗口、消息分帧、压缩、二进制传输。 |
 | [`fun/lib/lib-ui2-proxy.fun`](fun/lib/lib-ui2-proxy.fun) | `Ui2Proxy`：WebSocket 方式，提供页面并通过本地 WebSocket 转发二进制消息。 |
 | [`fun/lib/lib-ui2-proxy-unx.fun`](fun/lib/lib-ui2-proxy-unx.fun) | Linux/macOS 的无窗口 `Ui2Proxy`：HTTP 页面加 WebSocket，不需要 WebView2。 |
+| [`fun/lib/lib-ui2-unx.fun`](fun/lib/lib-ui2-unx.fun) | Unix 的 `Ui2Form`：可移植代理加可选的 Linux 原生 GTK/WebKit 窗口，或浏览器回退。 |
 | [`fun/lib/lib-fd-dispatcher.fun`](fun/lib/lib-fd-dispatcher.fun) | `FdDispatcher`：jCAL 处理函数查找、jRET 应答、fCAL/fRET 回调。 |
 | [`fun/lib/lib-fd-dispatcher-async.fun`](fun/lib/lib-fd-dispatcher-async.fun) | `FdAsyncDispatcher`：在 Fun 异步调度器中运行 jCAL 处理函数。 |
 | [`fun/lib/lib-fd-dispatcher-proc.fun`](fun/lib/lib-fd-dispatcher-proc.fun) | 基于文件队列的调度器和 worker，用于进程外 UI 后端。 |
@@ -61,6 +63,7 @@ Windows 的 `Ui2Proxy` 仍然基于窗体。在 Linux 和 macOS 上，
 | [`js/fun-bridge.js`](js/fun-bridge.js) | WebView2 桥接：共享缓冲区、Base64 通道、压缩、`window.Fun`。 |
 | [`js/fun-bridge-ws.js`](js/fun-bridge-ws.js) | WebSocket 桥接，提供相同的 `window.Fun` API。 |
 | [`src/prj/lib.wv2/`](src/prj/lib.wv2) | Delphi 2006 工程，基于 WebView4Delphi 构建 `libwv2.dll`。 |
+| [`src/prj/lib.webkitgtk/`](src/prj/lib.webkitgtk) | Linux 的小型 GTK3 + WebKit2GTK 窗口宿主（`libui2webkitgtk.so`）。 |
 
 ---
 
@@ -72,6 +75,7 @@ fun-ui/
 │   ├── lib-ui2.fun
 │   ├── lib-ui2-proxy.fun
 │   ├── lib-ui2-proxy-unx.fun
+│   ├── lib-ui2-unx.fun
 │   ├── lib-fd-dispatcher.fun
 │   ├── lib-fd-dispatcher-async.fun
 │   └── lib-fd-dispatcher-proc.fun
@@ -86,8 +90,12 @@ fun-ui/
     ├── wv2.dfm
     ├── setenv.bat
     └── make-2006.bat
+├── src/prj/lib.webkitgtk/    # 原生 GTK/WebKit 宿主（Linux、C）
+│   ├── host.c
+│   └── build.sh
 └── test/                    # 回环与桥接测试
     ├── lib-ui2-proxy-unx-test.fun
+    ├── lib-ui2-webview-lnx-test.fun
     └── fun-bridge-ws.test.js
 ```
 
@@ -276,12 +284,48 @@ Windows 的 `lib-ui2-proxy.fun` 仍然把页面放在 `Ui2Form` 中；平台感�
 
 ---
 
+## 原生 WebKitGTK 宿主（Linux）
+
+`lib-ui2-unx.fun` 在 Unix 上提供 `Ui2Form`。Linux 下如果存在
+`libui2webkitgtk.so`，它会创建 GTK3 窗口和 WebKit2GTK 视图，并加载可移植
+代理提供的页面。页面仍通过 WebSocket 与 Fun 通信，因此协议、调度器和
+JavaScript 桥接都不变。
+
+构建宿主（需要开发包，见兼容性）：
+
+```bash
+src/prj/lib.webkitgtk/build.sh
+```
+
+在 Fun 中使用：
+
+```fun
+use 'lib-ui2.fun';          // 在 Unix 上解析到 lib-ui2-unx.fun
+
+var form = Ui2Form();
+form.port = 8278;
+form.jsDir = 'js';
+form.hostLib = './src/prj/lib.webkitgtk/libui2webkitgtk.so';
+form.requireWebview = true; // 缺少宿主时直接报错，不回退浏览器
+form.dispatcher = MyDispatcher();
+form.Show();                // Start + Run
+```
+
+不设置 `requireWebview` 时，缺少宿主库会回退到 `OpenBrowser()`。把
+`form.traceFile` 设为文件路径可记录原生启动和循环诊断。宿主在进入
+GTK/WebKit 前会屏蔽 FPC 默认未屏蔽的浮点异常，并在关闭时排空主循环，
+等待 WebKit 进程退出。
+
+---
+
 ## 兼容性
 
 - Fun 9.x 运行时，并包含上面列出的标准库模块。
 - `libwv2.dll` 和 `Ui2Form` 需要 Windows 与 WebView2。
 - Linux 和 macOS 可使用可移植 WebSocket 宿主（`lib-ui2-proxy-unx.fun`），
   使用平台自带的 `lib-winsock` 后端，不需要窗口或 WebView2 运行时。
+- Linux 原生窗口需要 GTK3 和 WebKit2GTK 4.0/4.1 开发包及对应运行时库；
+  无显示器环境可用 Xvfb 和 D-Bus 会话。
 - `fun-bridge.js` 和 `fun-bridge-ws.js` 需要 Chromium 内核浏览器，因为桥接
   使用了 `CompressionStream` 和 `gbk` 文本编码标签。
 
@@ -293,7 +337,15 @@ funcmd test/lib-ui2-proxy-unx-test.fun
 
 # 浏览器桥接单元测试（Node 18+，需要 CompressionStream）
 node --experimental-websocket test/fun-bridge-ws.test.js
+
+# Linux 原生窗口冒烟测试（需要 GTK/WebKitGTK、Xvfb、D-Bus）
+src/prj/lib.webkitgtk/build.sh
+xvfb-run -a -s "-screen 0 1280x1024x24" \
+  dbus-run-session -- funcmd test/lib-ui2-webview-lnx-test.fun
 ```
+
+GitHub Actions 会在 ubuntu-24.04 上同时运行回环/桥接测试和无头 WebKitGTK
+测试，见 `.github/workflows/ci.yml`。
 
 ---
 

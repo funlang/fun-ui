@@ -21,6 +21,16 @@ All notable changes to fun-ui are documented here. The format follows
   `OpenBrowser()`, `SetPage()` and `PostData()` on the portable host.
 - Tests: `test/lib-ui2-proxy-unx-test.fun` (HTTP, WebSocket, jCAL/jRET,
   fCAL/fRET, compression) and `test/fun-bridge-ws.test.js`.
+- **Native Linux window host** (`src/prj/lib.webkitgtk/`): a small GTK3 +
+  WebKit2GTK host that loads the step-2 WebSocket page in a real window. It
+  needs no new wire protocol or JavaScript bridge.
+- `fun/lib/lib-ui2-unx.fun`: `Ui2Form` for Unix. On Linux it uses the native
+  WebKitGTK window when the host library is available; otherwise (and on
+  macOS) it falls back to the default browser.
+- Headless CI on ubuntu-24.04 with Xvfb: the native window loads a page, calls
+  `Fun('native_ready')` over WebSocket, and asserts the dispatcher receives
+  it. GTK/WebKit startup masks FPC's unmasked FP exceptions, and shutdown
+  drains the main context while WebKit terminates its processes.
 
 ## [1.0.0] - 2026-10-24
 

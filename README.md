@@ -28,7 +28,9 @@ message format and JavaScript API.
 **Status:** the WebView2 host (`libwv2.dll`) and `Ui2Form` are Windows-only.
 The Windows `Ui2Proxy` remains form-based. On Linux and macOS,
 `lib-ui2-proxy-unx.fun` provides the same host API without a window or
-`libwv2`, and is selected automatically by `use 'lib-ui2-proxy.fun'`.
+`libwv2`. On Linux, `lib-ui2-unx.fun` can additionally embed the page in a
+GTK3/WebKit2GTK window. On macOS it currently falls back to the default
+browser.
 
 **Goal:** offer the same Fun-side and JavaScript API on Windows, Linux and
 macOS, so a Fun program can serve a browser UI on every platform Fun supports.
@@ -39,9 +41,10 @@ macOS, so a Fun program can serve a browser UI on every platform Fun supports.
    from the WebView2 form and serves an external browser through the shared
    HTTP/WebSocket core. The Windows form-based proxy remains for backward
    compatibility.
-3. **Native webview backends.** Add Linux and macOS hosts behind the `Ui2Form`
-   API, using WebKitGTK and WKWebView (or another embeddable engine), without
-   changing the message protocol or the JavaScript bridge.
+3. **Native webview backends (Linux done, macOS pending).** `Ui2Form` on Linux
+   loads the step-2 WebSocket page in a GTK3/WebKit2GTK window without changing
+   the message protocol or the JavaScript bridge. The macOS WKWebView host is
+   still to do; macOS uses the browser fallback today.
 4. **Release engineering.** Per-platform build scripts, CI coverage, packaged
    examples, and a compatibility matrix.
 
@@ -58,6 +61,7 @@ webview hosts, and the socket backend).
 | [`fun/lib/lib-ui2.fun`](fun/lib/lib-ui2.fun) | `Ui2Form`: WebView2 host form, message framing, compression, binary-safe transfer. |
 | [`fun/lib/lib-ui2-proxy.fun`](fun/lib/lib-ui2-proxy.fun) | `Ui2Proxy`: WebSocket mode. Serves the page and tunnels binary messages through a local WebSocket. |
 | [`fun/lib/lib-ui2-proxy-unx.fun`](fun/lib/lib-ui2-proxy-unx.fun) | Windowless `Ui2Proxy` for Linux and macOS: HTTP page plus WebSocket, no WebView2. |
+| [`fun/lib/lib-ui2-unx.fun`](fun/lib/lib-ui2-unx.fun) | `Ui2Form` for Unix: the portable proxy plus an optional native GTK/WebKit window (Linux) or browser fallback. |
 | [`fun/lib/lib-fd-dispatcher.fun`](fun/lib/lib-fd-dispatcher.fun) | `FdDispatcher`: jCAL handler lookup, jRET replies, fCAL/fRET callbacks. |
 | [`fun/lib/lib-fd-dispatcher-async.fun`](fun/lib/lib-fd-dispatcher-async.fun) | `FdAsyncDispatcher`: runs jCAL handlers on the Fun async scheduler. |
 | [`fun/lib/lib-fd-dispatcher-proc.fun`](fun/lib/lib-fd-dispatcher-proc.fun) | File-queue dispatcher and worker for out-of-process UI back ends. |
@@ -66,6 +70,7 @@ webview hosts, and the socket backend).
 | [`js/fun-bridge.js`](js/fun-bridge.js) | WebView2 bridge: shared buffers, base64 channel, compression, `window.Fun`. |
 | [`js/fun-bridge-ws.js`](js/fun-bridge-ws.js) | WebSocket bridge with the same `window.Fun` API. |
 | [`src/prj/lib.wv2/`](src/prj/lib.wv2) | Delphi 2006 project that builds `libwv2.dll` on top of WebView4Delphi. |
+| [`src/prj/lib.webkitgtk/`](src/prj/lib.webkitgtk) | Small GTK3 + WebKit2GTK window host for Linux (`libui2webkitgtk.so`). |
 
 ---
 
@@ -77,6 +82,7 @@ fun-ui/
 │   ├── lib-ui2.fun
 │   ├── lib-ui2-proxy.fun
 │   ├── lib-ui2-proxy-unx.fun
+│   ├── lib-ui2-unx.fun
 │   ├── lib-fd-dispatcher.fun
 │   ├── lib-fd-dispatcher-async.fun
 │   └── lib-fd-dispatcher-proc.fun
@@ -91,8 +97,12 @@ fun-ui/
     ├── wv2.dfm
     ├── setenv.bat
     └── make-2006.bat
+├── src/prj/lib.webkitgtk/    # Native GTK/WebKit host (Linux, C)
+│   ├── host.c
+│   └── build.sh
 └── test/                    # Loopback and bridge tests
     ├── lib-ui2-proxy-unx-test.fun
+    ├── lib-ui2-webview-lnx-test.fun
     └── fun-bridge-ws.test.js
 ```
 
@@ -292,6 +302,41 @@ loader.
 
 ---
 
+## Native WebKitGTK host (Linux)
+
+`lib-ui2-unx.fun` provides `Ui2Form` on Unix. On Linux, if
+`libui2webkitgtk.so` is available, it creates a GTK3 window with a WebKit2GTK
+view and loads the page served by the portable proxy. The page still talks to
+Fun over the WebSocket transport, so the protocol, dispatcher, and JavaScript
+bridge are unchanged.
+
+Build the host (development packages required, see Compatibility):
+
+```bash
+src/prj/lib.webkitgtk/build.sh
+```
+
+Use it from Fun:
+
+```fun
+use 'lib-ui2.fun';          // resolves to lib-ui2-unx.fun on Unix
+
+var form = Ui2Form();
+form.port = 8278;
+form.jsDir = 'js';
+form.hostLib = './src/prj/lib.webkitgtk/libui2webkitgtk.so';
+form.requireWebview = true; // fail instead of falling back to a browser
+form.dispatcher = MyDispatcher();
+form.Show();                // Start + Run
+```
+
+Without `requireWebview`, a missing host library falls back to
+`OpenBrowser()`. Set `form.traceFile` to a path to record native startup and
+loop diagnostics. The host masks FPC's unmasked floating-point exceptions
+before entering GTK/WebKit and drains the main context during shutdown.
+
+---
+
 ## Compatibility
 
 - Fun 9.x runtime with the standard library modules listed above.
@@ -299,6 +344,9 @@ loader.
 - Linux and macOS for the portable WebSocket host (`lib-ui2-proxy-unx.fun`),
   using the platform's `lib-winsock` backend. No window or WebView2 runtime is
   required.
+- Linux native windows need GTK3 and WebKit2GTK 4.0 or 4.1 development files
+  at build time and the matching runtime libraries. Headless machines can use
+  Xvfb plus a D-Bus session.
 - Chromium-based browsers for `fun-bridge.js` and `fun-bridge-ws.js`, because
   the bridges use `CompressionStream` and the `gbk` text-encoding label.
 
@@ -310,7 +358,15 @@ funcmd test/lib-ui2-proxy-unx-test.fun
 
 # Browser bridge unit test (Node 18+; CompressionStream is required)
 node --experimental-websocket test/fun-bridge-ws.test.js
+
+# Native Linux window smoke test (needs GTK/WebKitGTK, Xvfb, D-Bus)
+src/prj/lib.webkitgtk/build.sh
+xvfb-run -a -s "-screen 0 1280x1024x24" \
+  dbus-run-session -- funcmd test/lib-ui2-webview-lnx-test.fun
 ```
+
+GitHub Actions runs both the loopback/bridge tests and the headless
+WebKitGTK test on ubuntu-24.04. See `.github/workflows/ci.yml`.
 
 ---
 
