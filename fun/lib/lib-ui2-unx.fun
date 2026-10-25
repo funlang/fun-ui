@@ -40,9 +40,16 @@ class Ui2Form = Ui2Proxy()
   var hostLib = @ui2webkitdll;
   var requireWebview = @ui2RequireWebview;
   var lastError = '';
+  var traceFile = '';      // optional path for native startup tracing
 
   var _host = nil;
   var _native = false;
+
+  fun _trace(s)
+    if traceFile <> '' then
+      traceFile.save('' & s & 10.toChar(), append: true);
+    end if;
+  end fun;
 
   //---- lifecycle ------------------------------------------------
   fun Start()
@@ -53,10 +60,16 @@ class Ui2Form = Ui2Proxy()
     if IsLinux() then
       try
         _host = hostLib;
+        _trace('gtk init begin');
         var init = _host.getapi('ui2_gtk_init', ':i');
-        if init.call() <> 0 then
+        var initOk = init.call();
+        _trace('gtk init returned ' & initOk);
+        if initOk <> 0 then
           var show = _host.getapi('ui2_gtk_show', 'siis:i');
-          if show.call(this.Url(), width, height, title) <> 0 then
+          _trace('gtk show begin ' & this.Url());
+          var shown = show.call(this.Url(), width, height, title);
+          _trace('gtk show returned ' & shown);
+          if shown <> 0 then
             _native = true;
           end if;
         end if;

@@ -58,6 +58,7 @@ form.dispatcher = TestDispatcher();
 form.SetSize(800, 600);
 form.hostLib = './src/prj/lib.webkitgtk/libui2webkitgtk.so';
 form.requireWebview = true;
+form.traceFile = '/tmp/ui2-webview-progress.txt';
 
 mark('before Start');
 var port = form.Start();
