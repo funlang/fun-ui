@@ -13,6 +13,7 @@
 
 #include <gtk/gtk.h>
 #include <webkit2/webkit2.h>
+#include <stdio.h>
 
 static GtkWidget *g_window = NULL;
 static GtkWidget *g_webview = NULL;
@@ -34,6 +35,8 @@ int ui2_gtk_init(void) {
 // Returns 1 on success, 0 on failure. The caller only needs a flag, so no
 // pointer crosses the Fun FFI boundary.
 int ui2_gtk_show(const char *url, int width, int height, const char *title) {
+    fprintf(stderr, "ui2_gtk_show: enter\n");
+    fflush(stderr);
     if (g_window != NULL) {
         return 1;
     }
@@ -44,6 +47,8 @@ int ui2_gtk_show(const char *url, int width, int height, const char *title) {
     if (height <= 0) height = 768;
 
     g_window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    fprintf(stderr, "ui2_gtk_show: window=%p\n", (void *)g_window);
+    fflush(stderr);
     if (g_window == NULL) {
         return 0;
     }
@@ -52,14 +57,22 @@ int ui2_gtk_show(const char *url, int width, int height, const char *title) {
     g_signal_connect(g_window, "destroy", G_CALLBACK(on_destroy), NULL);
 
     g_webview = webkit_web_view_new();
+    fprintf(stderr, "ui2_gtk_show: webview=%p\n", (void *)g_webview);
+    fflush(stderr);
     if (g_webview == NULL) {
         gtk_widget_destroy(g_window);
         g_window = NULL;
         return 0;
     }
     gtk_container_add(GTK_CONTAINER(g_window), g_webview);
+    fprintf(stderr, "ui2_gtk_show: container added\n");
+    fflush(stderr);
     webkit_web_view_load_uri(WEBKIT_WEB_VIEW(g_webview), url);
+    fprintf(stderr, "ui2_gtk_show: load_uri returned\n");
+    fflush(stderr);
     gtk_widget_show_all(g_window);
+    fprintf(stderr, "ui2_gtk_show: show_all returned\n");
+    fflush(stderr);
 
     g_closed = 0;
     return 1;
