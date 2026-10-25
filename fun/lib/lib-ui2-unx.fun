@@ -44,6 +44,11 @@ class Ui2Form = Ui2Proxy()
 
   var _host = nil;
   var _native = false;
+  var _fnInit = nil;
+  var _fnShow = nil;
+  var _fnIterate = nil;
+  var _fnClose = nil;
+  var _fnTitle = nil;
 
   fun _trace(s)
     if traceFile <> '' then
@@ -60,14 +65,17 @@ class Ui2Form = Ui2Proxy()
     if IsLinux() then
       try
         _host = hostLib;
+        _fnInit    = _host.getapi('ui2_gtk_init', ':i');
+        _fnShow    = _host.getapi('ui2_gtk_show', 'siis:i');
+        _fnIterate = _host.getapi('ui2_gtk_iterate', ':i');
+        _fnClose   = _host.getapi('ui2_gtk_close', ':i');
+        _fnTitle   = _host.getapi('ui2_gtk_set_title', 's:i');
         _trace('gtk init begin');
-        var init = _host.getapi('ui2_gtk_init', ':i');
-        var initOk = init.call();
+        var initOk = _fnInit.call();
         _trace('gtk init returned ' & initOk);
         if initOk <> 0 then
-          var show = _host.getapi('ui2_gtk_show', 'siis:i');
           _trace('gtk show begin ' & this.Url());
-          var shown = show.call(this.Url(), width, height, title);
+          var shown = _fnShow.call(this.Url(), width, height, title);
           _trace('gtk show returned ' & shown);
           if shown <> 0 then
             _native = true;
@@ -95,8 +103,7 @@ class Ui2Form = Ui2Proxy()
   fun RunOnce(timeout)
     if _native then
       _trace('iterate begin');
-      var iterate = _host.getapi('ui2_gtk_iterate', ':i');
-      var alive = iterate.call();
+      var alive = _fnIterate.call();
       _trace('iterate returned ' & alive);
       if alive = 0 then
         // The user closed the native window. Close the server too.
@@ -122,7 +129,7 @@ class Ui2Form = Ui2Proxy()
     title = s;
     if _native then
       try
-        _host.getapi('ui2_gtk_set_title', 's:i').call(s);
+        _fnTitle.call(s);
       except
         ?. 'Ui2Form SetTitle: ' & @;
       end try;
@@ -141,7 +148,7 @@ class Ui2Form = Ui2Proxy()
   fun Stop()
     if _native then
       try
-        _host.getapi('ui2_gtk_close', ':i').call();
+        _fnClose.call();
       except
         ?. 'Ui2Form Stop: ' & @;
       end try;
