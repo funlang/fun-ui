@@ -205,12 +205,16 @@ int main(int argc, char **argv) {
                "}catch(e){window.__wsState='throw:'+e.message;}"
                "</script></body></html>",
               wsURL];
-      [web loadHTMLString:html baseURL:nil];
+      // WKWebView needs a base URL with a scheme; nil makes the load silently
+      // fail with CFURLCopyResourcePropertyForKey "URL has no scheme".
+      [web loadHTMLString:html
+                  baseURL:[NSURL URLWithString:@"http://127.0.0.1/"]];
     } else {
       NSString *html =
           @"<!doctype html><html><head><title>probe-ok</title></head>"
            "<body><h1>probe</h1></body></html>";
-      [web loadHTMLString:html baseURL:nil];
+      [web loadHTMLString:html
+                  baseURL:[NSURL URLWithString:@"http://127.0.0.1/"]];
     }
 
     NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:20.0];

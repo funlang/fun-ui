@@ -81,7 +81,8 @@ jobs:
             POLICY="--hidden"
           else
             echo "::error title=wkwebview::no activation policy could load an HTML string"
-            exit 1
+            POLICY=""
+            FAIL=1
           fi
           echo "::notice title=wkwebview::working policy='${POLICY:-regular}'"
 
