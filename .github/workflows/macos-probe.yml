@@ -1,9 +1,10 @@
 # macOS feasibility probe for a native WKWebView host.
 #
-# This workflow is temporary: it answers whether a hosted macOS runner can
+# This is a manual diagnostic: it answers whether a hosted macOS runner can
 # create an AppKit window with WKWebView, load an HTML string and a local HTTP
-# page, and open a WebSocket. If it passes, the same approach becomes a job in
-# ci.yml; if it fails, the native macOS host cannot be verified on this runner.
+# page, and open a WebSocket. The permanent native-window check lives in ci.yml
+# (macos-wkwebview); run this from the Actions UI when that job or a runner
+# image changes.
 #
 # Diagnostics are emitted as ::notice::/::error:: annotations so they can be
 # read through the public check-runs API without a token. Logs are also
@@ -12,8 +13,6 @@
 name: macos-probe
 
 on:
-  push:
-    branches: ["probe/macos-wkwebview"]
   workflow_dispatch:
 
 concurrency:

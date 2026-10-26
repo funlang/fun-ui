@@ -155,8 +155,14 @@ runs:
       shell: bash
       working-directory: fun-src
       run: |
-        cp -f src/prj/fun/funcmd fun/funcmd
+        if [ -f src/prj/fun/funcmd ]; then
+          cp -f src/prj/fun/funcmd fun/funcmd
+        fi
         if [ -f src/prj/fun/libtcc.so ]; then
           cp -f src/prj/fun/libtcc.so fun/libtcc.so
+        fi
+        if [ ! -x fun/funcmd ]; then
+          echo "::error title=setup-fun::funcmd was not built or restored"
+          exit 1
         fi
         ./fun/funcmd --version
