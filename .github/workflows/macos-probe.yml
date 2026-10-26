@@ -1,0 +1,131 @@
+# macOS feasibility probe for a native WKWebView host.
+#
+# This workflow is temporary: it answers whether a hosted macOS runner can
+# create an AppKit window with WKWebView, load an HTML string and a local HTTP
+# page, and open a WebSocket. If it passes, the same approach becomes a job in
+# ci.yml; if it fails, the native macOS host cannot be verified on this runner.
+#
+# Diagnostics are emitted as ::notice::/::error:: annotations so they can be
+# read through the public check-runs API without a token. Logs are also
+# uploaded as an artifact.
+
+name: macos-probe
+
+on:
+  push:
+    branches: ["probe/macos-wkwebview"]
+  workflow_dispatch:
+
+concurrency:
+  group: macos-probe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  wkwebview:
+    name: wkwebview
+    runs-on: macos-14
+    timeout-minutes: 20
+    env:
+      NSUnbufferedIO: "YES"
+    steps:
+      - name: Check out fun-ui
+        uses: actions/checkout@v4
+
+      - name: Diagnose the runner session
+        run: |
+          sw_vers
+          uname -m
+          echo "user=$(id -un) uid=$(id -u)"
+          echo "launchctl managername: $(launchctl managername 2>&1 || true)"
+          launchctl print "gui/$(id -u)" 2>&1 | head -30 || true
+          ps -axo pid,comm | grep -iE 'windowserver|loginwindow' || true
+          system_profiler SPDisplaysDataType 2>/dev/null | head -30 || true
+
+      - name: Build probe
+        run: |
+          clang -fobjc-arc -Wall -Wextra -Wno-deprecated-declarations \
+            -framework Cocoa -framework WebKit \
+            test/macos/wkwebview_probe.m -o probe
+          file probe
+
+      - name: Run WKWebView probe
+        run: |
+          set -uo pipefail
+          FAIL=0
+
+          run_probe() {
+            name="$1"; shift
+            set +e
+            ./probe "$@" > "$name.log" 2>&1
+            rc=$?
+            set -e
+            echo "===== $name (rc=$rc) ====="
+            cat "$name.log"
+            if [ "$rc" -eq 0 ]; then
+              tail_text=$(tail -n 4 "$name.log" | tr '\r' ' ' | tr '\n' '|' | sed 's/%/%25/g' | cut -c1-1200)
+              echo "::notice title=wkwebview-$name::PASS $tail_text"
+            else
+              msg=$(tail -n 30 "$name.log" | tr '\r' ' ' | tr '\n' '|' | sed 's/%/%25/g' | cut -c1-1600)
+              echo "::error title=wkwebview-$name::rc=$rc $msg"
+            fi
+            return "$rc"
+          }
+
+          # 1. HTML string, with fallbacks for activation policies.
+          POLICY=""
+          if run_probe html-regular html --expect=probe-ok; then
+            POLICY=""
+          elif run_probe html-accessory html --accessory --expect=probe-ok; then
+            POLICY="--accessory"
+          elif run_probe html-hidden html --hidden --expect=probe-ok; then
+            POLICY="--hidden"
+          else
+            echo "::error title=wkwebview::no activation policy could load an HTML string"
+            exit 1
+          fi
+          echo "::notice title=wkwebview::working policy='${POLICY:-regular}'"
+
+          # 2. Local HTTP page (the native host serves the page over HTTP).
+          mkdir -p "$RUNNER_TEMP/www"
+          cat > "$RUNNER_TEMP/www/probe.html" <<'HTML'
+          <!doctype html><html><head><title>http-probe-ok</title></head><body><h1>http</h1></body></html>
+          HTML
+          python3 -m http.server 18765 --bind 127.0.0.1 \
+            --directory "$RUNNER_TEMP/www" > http-server.log 2>&1 &
+          HTTP_PID=$!
+          trap 'kill "$HTTP_PID" 2>/dev/null || true' EXIT
+          sleep 1
+          curl -fsS http://127.0.0.1:18765/probe.html || true
+          if ! run_probe http $POLICY --expect=http-probe-ok http://127.0.0.1:18765/probe.html; then
+            FAIL=1
+          fi
+
+          # 3. WebSocket handshake from the page (the transport Ui2Proxy uses).
+          python3 test/macos/ws_probe_server.py 18766 > ws-server.log 2>&1 &
+          WS_PID=$!
+          trap 'kill "$HTTP_PID" "$WS_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 50); do
+            grep -q listening ws-server.log 2>/dev/null && break
+            sleep 0.1
+          done
+          cat ws-server.log || true
+          if ! run_probe websocket $POLICY --ws=ws://127.0.0.1:18766/ \
+               --expect=probe-ok; then
+            FAIL=1
+          fi
+
+          if [ "$FAIL" -ne 0 ]; then
+            echo "::error title=wkwebview::one or more probe modes failed"
+            exit 1
+          fi
+          echo "::notice title=wkwebview::all probe modes passed"
+
+      - name: Upload probe logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-probe-logs
+          path: |
+            *.log
+            probe-*.log
+          if-no-files-found: ignore
