@@ -8,13 +8,16 @@
 //
 //   * Linux: if the GTK3/WebKit2GTK host (libui2webkitgtk.so) is available,
 //     create a real window and load the page served by the proxy.
-//   * macOS (or Linux without the host library): fall back to opening the
-//     default browser. The proxy still runs and serves the same page.
+//   * macOS: if the AppKit/WKWebView host (libui2wkwebview.dylib) is
+//     available, create a real window and load the page served by the proxy.
+//   * Otherwise (or on other Unix systems): fall back to opening the default
+//     browser. The proxy still runs and serves the same page.
 //
 // The page always talks to Fun over the WebSocket transport, so the message
 // protocol, dispatcher, and JavaScript bridge are unchanged from step 2.
 //
-//     @ui2webkitdll = '/path/to/libui2webkitgtk.so';  // optional
+//     @ui2webkitdll = '/path/to/libui2webkitgtk.so';  // optional; on macOS
+//                                                     // libui2wkwebview.dylib
 //     var form = Ui2Form();
 //     form.port = 8278;
 //     form.jsDir = 'js';
@@ -62,21 +65,30 @@ class Ui2Form = Ui2Proxy()
     // where subclasses set page/jsDir/dispatcher.
     var port = base.Start();
 
-    if IsLinux() then
+    var lib = hostLib;
+    var sym = 'ui2_gtk_';
+    if IsMac() then
+      sym = 'ui2_wk_';
+      if lib = '' or lib = 'libui2webkitgtk.so' then
+        lib = 'libui2wkwebview.dylib';
+      end if;
+    end if;
+
+    if IsLinux() or IsMac() then
       try
-        _host = hostLib;
-        _fnInit    = _host.getapi('ui2_gtk_init', ':i');
-        _fnShow    = _host.getapi('ui2_gtk_show', 'siis:i');
-        _fnIterate = _host.getapi('ui2_gtk_iterate', ':i');
-        _fnClose   = _host.getapi('ui2_gtk_close', ':i');
-        _fnTitle   = _host.getapi('ui2_gtk_set_title', 's:i');
-        _trace('gtk init begin');
+        _host = lib;
+        _fnInit    = _host.getapi(sym & 'init', ':i');
+        _fnShow    = _host.getapi(sym & 'show', 'siis:i');
+        _fnIterate = _host.getapi(sym & 'iterate', ':i');
+        _fnClose   = _host.getapi(sym & 'close', ':i');
+        _fnTitle   = _host.getapi(sym & 'set_title', 's:i');
+        _trace('host init begin');
         var initOk = _fnInit.call();
-        _trace('gtk init returned ' & initOk);
+        _trace('host init returned ' & initOk);
         if initOk <> 0 then
-          _trace('gtk show begin ' & this.Url());
+          _trace('host show begin ' & this.Url());
           var shown = _fnShow.call(this.Url(), width, height, title);
-          _trace('gtk show returned ' & shown);
+          _trace('host show returned ' & shown);
           if shown <> 0 then
             _native = true;
           end if;
@@ -89,10 +101,10 @@ class Ui2Form = Ui2Proxy()
 
     if not _native then
       if lastError = '' then
-        lastError = 'gtk init/show returned false';
+        lastError = 'native host init/show returned false';
       end if;
       if requireWebview then
-        raise 'Ui2Form: WebKitGTK host not available: ' & hostLib & ': ' & lastError;
+        raise 'Ui2Form: native webview host not available: ' & lib & ': ' & lastError;
       end if;
       this.OpenBrowser();
     end if;

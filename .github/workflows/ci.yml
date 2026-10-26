@@ -8,6 +8,10 @@
 #   same Fun build, plus GTK3/WebKit2GTK and Xvfb, then builds the native
 #   window host and runs the headless native-window smoke test.
 #
+# macos-wkwebview:
+#   Homebrew FPC build of Fun, the portable loopback test, then the
+#   AppKit/WKWebView host and its native-window smoke test.
+#
 # The Fun build lives in .github/actions/setup-fun and is cached, so a run
 # that only changes fun-ui does not rebuild the interpreter.
 
@@ -23,7 +27,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  FUN_REF: v9.4.6
+  FUN_REF: v9.4.7
 
 jobs:
   linux-loopback:
@@ -119,3 +123,72 @@ jobs:
         with:
           name: webview-log
           path: /tmp/webview.log
+
+  macos-wkwebview:
+    name: macos-wkwebview
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - name: Check out fun-ui
+        uses: actions/checkout@v4
+
+      - name: Set up Fun
+        id: fun
+        uses: ./.github/actions/setup-fun
+        with:
+          ref: ${{ env.FUN_REF }}
+
+      - name: Build WKWebView host
+        run: src/prj/lib.wkwebview/build.sh
+
+      - name: Portable loopback test (macOS)
+        env:
+          FUN_PATH: ${{ steps.fun.outputs.fun_root }}/lib
+        run: |
+          set +e
+          "${{ steps.fun.outputs.funcmd }}" test/lib-ui2-proxy-unx-test.fun \
+            > "$RUNNER_TEMP/loopback.log" 2>&1
+          rc=$?
+          cat "$RUNNER_TEMP/loopback.log"
+          if [ "$rc" -ne 0 ]; then
+            msg="$(tail -n 40 "$RUNNER_TEMP/loopback.log" | tr '\r' ' ' | tr '\n' '|' | sed 's/%/%25/g' | cut -c1-2000)"
+            echo "::error title=macos loopback::$msg"
+          fi
+          exit "$rc"
+
+      - name: Native window test (macOS)
+        env:
+          FUN_PATH: ${{ steps.fun.outputs.fun_root }}/lib
+        run: |
+          set +e
+          "${{ steps.fun.outputs.funcmd }}" test/lib-ui2-webview-mac-test.fun \
+            > "$RUNNER_TEMP/mac.log" 2>&1
+          rc=$?
+          cat "$RUNNER_TEMP/mac.log"
+          echo "--- progress ---"
+          cat /tmp/ui2-mac-progress.txt 2>/dev/null || true
+          cp -f /tmp/ui2-mac-progress.txt "$RUNNER_TEMP/progress.txt" 2>/dev/null || true
+          if [ "$rc" -ne 0 ]; then
+            {
+              echo "rc=$rc"
+              echo "--- progress ---"
+              cat /tmp/ui2-mac-progress.txt 2>/dev/null || true
+              echo "--- test log tail ---"
+              tail -n 60 "$RUNNER_TEMP/mac.log"
+            } > "$RUNNER_TEMP/macos-error.txt"
+            msg="$(tr '\r' ' ' < "$RUNNER_TEMP/macos-error.txt" | tr '\n' '|' | sed 's/%/%25/g' | cut -c1-2000)"
+            echo "::error title=macos webview test::$msg"
+          fi
+          exit "$rc"
+
+      - name: Upload macOS logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-webview-log
+          path: |
+            ${{ runner.temp }}/mac.log
+            ${{ runner.temp }}/loopback.log
+            ${{ runner.temp }}/macos-error.txt
+            ${{ runner.temp }}/progress.txt
+          if-no-files-found: ignore

@@ -1,7 +1,9 @@
 # Build the Fun interpreter once per job, with caching.
 #
-# This is the same build sequence as funlang/fun's Linux CI:
+# Linux uses the same build sequence as funlang/fun's Linux CI:
 # FPC 3.2.2 -> vendored PCRE/TCC -> make-linux-x86_64.sh.
+# macOS uses Homebrew FPC + make-macos.sh, which enables getapi() through
+# FPC's libffi unit when it is available.
 #
 # Outputs:
 #   funcmd   absolute path to the built funcmd
@@ -17,7 +19,7 @@ inputs:
   ref:
     description: funlang/fun git ref
     required: false
-    default: v9.4.6
+    default: v9.4.7
 
 outputs:
   funcmd:
@@ -45,6 +47,7 @@ runs:
         echo "funcmd=$GITHUB_WORKSPACE/fun-src/fun/funcmd" >> "$GITHUB_OUTPUT"
 
     - name: Cache Free Pascal 3.2.2
+      if: runner.os == 'Linux'
       id: cache-fpc
       uses: actions/cache@v4
       with:
@@ -54,7 +57,7 @@ runs:
         key: fpc-3.2.2-x86_64-linux-${{ inputs.ref }}
 
     - name: Install Free Pascal 3.2.2
-      if: steps.cache-fpc.outputs.cache-hit != 'true'
+      if: runner.os == 'Linux' && steps.cache-fpc.outputs.cache-hit != 'true'
       shell: bash
       run: |
         set -e
@@ -66,8 +69,38 @@ runs:
         printf '%s\n\n\n\n\n\n\n\n\n\n' "$HOME/fpc-3.2.2" | ./install.sh
 
     - name: Put fpc on PATH
+      if: runner.os == 'Linux'
       shell: bash
       run: echo "$HOME/fpc-3.2.2/bin" >> "$GITHUB_PATH"
+
+    # Homebrew has an FPC 3.2.2 arm64 bottle. Cache the Cellar and opt trees;
+    # a hit only needs `brew link` to recreate the bin symlinks.
+    - name: Cache Homebrew FPC (macOS)
+      if: runner.os == 'macOS'
+      id: cache-fpc-macos
+      uses: actions/cache@v4
+      with:
+        path: |
+          /opt/homebrew/Cellar/fpc
+          /opt/homebrew/opt/fpc
+        key: brew-fpc-3.2.2-arm64-v1
+
+    - name: Install FPC (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        set -e
+        if [ "$(uname -m)" != "arm64" ]; then
+          echo "::error title=setup-fun::macOS builds are supported on arm64 runners only"
+          exit 1
+        fi
+        if [ "${{ steps.cache-fpc-macos.outputs.cache-hit }}" = "true" ]; then
+          brew link --overwrite fpc || true
+        fi
+        if ! command -v fpc >/dev/null 2>&1; then
+          brew install fpc
+        fi
+        fpc -iV
 
     - name: Cache third-party C sources
       id: cache-third
@@ -89,10 +122,11 @@ runs:
         path: |
           fun-src/src/prj/fun/funcmd
           fun-src/src/prj/fun/libtcc.so
-        key: funcmd-${{ inputs.ref }}-linux-x86_64
+          fun-src/fun/funcmd
+        key: funcmd-${{ inputs.ref }}-${{ runner.os }}-${{ runner.arch }}
 
-    - name: Build funcmd
-      if: steps.cache-funcmd.outputs.cache-hit != 'true'
+    - name: Build funcmd (Linux)
+      if: runner.os == 'Linux' && steps.cache-funcmd.outputs.cache-hit != 'true'
       shell: bash
       working-directory: fun-src/src/prj/fun
       run: |
@@ -101,6 +135,21 @@ runs:
           exit 1
         }
         tail -n 5 "$RUNNER_TEMP/build-fun.log"
+
+    - name: Build funcmd (macOS)
+      if: runner.os == 'macOS' && steps.cache-funcmd.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: fun-src/src/prj/fun
+      run: |
+        ./make-macos.sh > "$RUNNER_TEMP/build-fun.log" 2>&1 || {
+          tail -n 80 "$RUNNER_TEMP/build-fun.log"
+          exit 1
+        }
+        tail -n 12 "$RUNNER_TEMP/build-fun.log"
+        if ! grep -q 'FFI enabled' "$RUNNER_TEMP/build-fun.log"; then
+          echo "::error title=macos fun build::getapi is disabled (FPC libffi unit not found)"
+          exit 1
+        fi
 
     - name: Publish funcmd
       shell: bash
