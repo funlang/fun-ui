@@ -66,7 +66,11 @@ jobs:
               echo "::notice title=wkwebview-$name::PASS $tail_text"
             else
               msg=$(tail -n 30 "$name.log" | tr '\r' ' ' | tr '\n' '|' | sed 's/%/%25/g' | cut -c1-1600)
-              echo "::error title=wkwebview-$name::rc=$rc $msg"
+              if [ "${SOFT_MODE:-0}" = "1" ]; then
+                echo "::warning title=wkwebview-$name::rc=$rc $msg"
+              else
+                echo "::error title=wkwebview-$name::rc=$rc $msg"
+              fi
             fi
             return "$rc"
           }
@@ -75,6 +79,7 @@ jobs:
           # is informational: the native host loads the page over HTTP, so a
           # data/HTML-string load failure is not a blocker.
           POLICY=""
+          SOFT_MODE=1
           if run_probe html-regular html --expect=probe-ok; then
             POLICY=""
           elif run_probe html-accessory html --accessory --expect=probe-ok; then
@@ -85,6 +90,7 @@ jobs:
             echo "::warning title=wkwebview::no activation policy could load an HTML string; continuing with HTTP"
             POLICY=""
           fi
+          SOFT_MODE=0
           echo "::notice title=wkwebview::working policy='${POLICY:-regular}'"
 
           # 2. Local HTTP page (the native host serves the page over HTTP).

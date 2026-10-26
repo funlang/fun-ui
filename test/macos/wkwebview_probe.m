@@ -271,8 +271,15 @@ int main(int argc, char **argv) {
     __block NSString *jsError = nil;
     __block int jsDone = 0;
     NSString *script =
-        @"[document.title, typeof WebSocket, typeof CompressionStream, "
-         "typeof TextDecoder, navigator.userAgent]";
+        @"(function(){"
+         "var r=[document.title,typeof WebSocket,typeof CompressionStream,"
+         "typeof TextDecoder];"
+         "try{r.push(new TextDecoder('gbk').decode("
+         "new Uint8Array([0xC4,0xE3])));}catch(e){r.push('gbk-error:'+e);}"
+         "try{new CompressionStream('deflate-raw');"
+         "r.push('deflate-raw-ok');}catch(e){r.push('deflate-raw-error:'+e);}"
+         "r.push(navigator.userAgent);"
+         "return r;})()";
     [web evaluateJavaScript:script
           completionHandler:^(id result, NSError *error) {
             if (error != nil) {
@@ -303,11 +310,20 @@ int main(int argc, char **argv) {
             [[jsResult[1] description] UTF8String],
             [[jsResult[2] description] UTF8String],
             [[jsResult[3] description] UTF8String]);
+    const char *gbk = [[jsResult[4] description] UTF8String];
+    const char *deflateRaw = [[jsResult[5] description] UTF8String];
+    fprintf(stderr, "PROBE: gbk=%s deflateRaw=%s\n",
+            gbk != NULL ? gbk : "(nil)",
+            deflateRaw != NULL ? deflateRaw : "(nil)");
     fprintf(stderr, "PROBE: userAgent=%s\n",
-            [[jsResult[4] description] UTF8String]);
+            [[jsResult[6] description] UTF8String]);
 
     if (![[jsResult[1] description] isEqualToString:@"function"]) {
       fprintf(stderr, "PROBE: WebSocket is not available in this WebView\n");
+      return 4;
+    }
+    if (![[jsResult[4] description] isEqualToString:@"你"]) {
+      fprintf(stderr, "PROBE: TextDecoder('gbk') does not decode GBK\n");
       return 4;
     }
     if (expectTitle != NULL) {
