@@ -6,6 +6,12 @@ All notable changes to fun-ui are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- CI caches the downloaded GTK/WebKit `.deb` packages and bounds every apt
+  step, so `linux-webkitgtk` no longer spends the whole run on a slow package
+  mirror.
+
 ## [1.0.2] - 2026-10-26
 
 ### Added

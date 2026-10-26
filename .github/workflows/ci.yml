@@ -55,7 +55,7 @@ jobs:
   linux-webkitgtk:
     name: linux-webkitgtk
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - name: Check out fun-ui
         uses: actions/checkout@v4
@@ -66,12 +66,43 @@ jobs:
         with:
           ref: ${{ env.FUN_REF }}
 
+      # The GTK/WebKit dev packages pull in a few hundred megabytes of .debs,
+      # and the runner's apt mirror is occasionally slow enough to dominate
+      # the run. Keep the downloaded packages and install from the cache.
+      # Bump the version suffix when the package set changes.
+      - name: Restore apt package cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/fun-ui/apt-archives
+          key: apt-${{ runner.os }}-${{ runner.arch }}-webkit2gtk-4.1-v1
+
       - name: Install GTK, WebKitGTK, and Xvfb
+        env:
+          APT_OPTS: -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30
+          PKGS: libgtk-3-dev libwebkit2gtk-4.1-dev xvfb dbus-x11
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libgtk-3-dev libwebkit2gtk-4.1-dev \
-            xvfb dbus-x11
+          set -eu
+          cache="$HOME/.cache/fun-ui/apt-archives"
+          mkdir -p "$cache"
+
+          timeout 300 sudo apt-get update $APT_OPTS
+
+          # Seed apt's download cache from a previous run, if there is one.
+          if ls "$cache"/*.deb >/dev/null 2>&1; then
+            sudo cp "$cache"/*.deb /var/cache/apt/archives/
+          fi
+
+          # Install without the network first; fall back to a normal install
+          # when the cache is missing, stale, or incomplete.
+          if ! timeout 600 sudo apt-get install -y --no-install-recommends \
+              --no-download $APT_OPTS $PKGS; then
+            echo "cached packages incomplete; downloading the rest" >&2
+            timeout 900 sudo apt-get install -y --no-install-recommends \
+              $APT_OPTS $PKGS
+          fi
+
+          sudo cp /var/cache/apt/archives/*.deb "$cache"/ 2>/dev/null || true
+          sudo chown -R "$(id -u):$(id -g)" "$cache"
 
       - name: Build WebKitGTK host
         run: src/prj/lib.webkitgtk/build.sh
