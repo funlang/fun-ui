@@ -198,6 +198,13 @@ JavaScript 把 `fRET` 帧写入该缓冲区后只回传句柄，避免第二次�
 `FdDispatcher` 会把名字解析为 `fd_<name>` 方法；名字中的连字符和空格会替换
 为下划线，若找不到再去掉分隔符重试。
 
+`timeout` 的单位是毫秒，`0`（默认）表示不超时。超时后回调收到
+`(null, 'timeout after Nms')`，Promise 形式以同一字符串 reject。WebSocket
+关闭时所有未完成调用以 `'connection closed'` 失败。Fun 侧的
+`callJS(name, args, maxRetSize, callback, timeout)` 接受同样的可选超时；
+宿主应在轮询循环中调用 `dispatcher.expire()`（`Ui2Proxy.RunOnce` 已包含），
+`dispatcher.failPending(reason)` 可取消全部未完成调用。
+
 `fCAL` 调用对应的 JavaScript 处理函数注册在桥接调度器上：
 
 ```js
@@ -281,6 +288,28 @@ WebSocket 连接。JavaScript 加载 `fun-bridge-ws.js`，它使用 `window.__ws
 
 Windows 的 `lib-ui2-proxy.fun` 仍然把页面放在 `Ui2Form` 中；平台感知的模块
 加载器会在 Linux 和 macOS 上自动选择可移植实现。
+
+### 安全
+
+浏览器发来的每个 WebSocket 帧在进入调度器前都会检查：
+
+- 带 `Origin` 时，它必须等于 `http://` 或 `https://` 加上请求的 `Host`，
+  且主机必须是 IP 字面量、`localhost`、配置的 `ip`，或 `allowedHosts` 中的
+  条目。这可以阻止跨站 WebSocket 劫持和 DNS 重绑定，否则任意网页都可能
+  调用 `127.0.0.1` 上的 `fd_*` 方法。
+- 没有 `Origin` 的请求（非浏览器客户端）允许通过，但可选 `token` 仍然生效。
+- `token` 必须是 URL 安全字符（`A-Z a-z 0-9 _ -`）。服务端会在页面中注入
+  `window.__wsUrl = 'ws://<host>/?token=...'`，升级请求必须携带它。
+- `allowedOrigins` 用于反向代理或自定义主机，填入精确的 origin。
+- `checkOrigin = false` 会关闭检查，仅在可信网络中使用。
+
+可移植宿主还只接受 `/` 和 `/ws` 路径的升级请求，用 `maxFrameBytes`
+（默认 16 MiB，解压后同样检查）限制消息大小，并在路由前丢弃畸形或超限帧。
+只有解析成功的帧才会更新推送目标，坏帧无法抢走 fCAL/推送连接。
+
+除非确实需要远程访问，否则绑定 `127.0.0.1`；非回环绑定且没有 token 时会
+打印警告。每个进程只运行一个 `Ui2Proxy`：Unix socket 层的 poll 状态是进程级
+的，停止或驱动第二个代理会干扰第一个。
 
 ---
 

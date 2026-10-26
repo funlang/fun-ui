@@ -212,6 +212,14 @@ Promise. On the Fun side, `FdDispatcher` resolves a name to a method called
 `fd_<name>`; dashes and spaces in the name become underscores, with a
 name-without-separators lookup as a fallback.
 
+`timeout` is in milliseconds; `0` (the default) means no timeout. When it
+expires, a callback receives `(null, 'timeout after Nms')` and a Promise-based
+call rejects with the same string. Closing the WebSocket fails every pending
+call with `'connection closed'`. On the Fun side, `callJS(name, args,
+maxRetSize, callback, timeout)` accepts the same optional timeout; hosts call
+`dispatcher.expire()` from their poll loop (`Ui2Proxy.RunOnce` already does),
+and `dispatcher.failPending(reason)` cancels everything outstanding.
+
 JavaScript handlers for `fCAL` calls are registered on the bridge dispatcher:
 
 ```js
@@ -299,6 +307,34 @@ frame to the most recent page connection. fCAL responses arrive as ordinary
 The Windows `lib-ui2-proxy.fun` still hosts the page in `Ui2Form`; the portable
 host is selected automatically on Linux and macOS by the platform-aware module
 loader.
+
+### Security
+
+Every WebSocket frame from the browser is checked before it reaches the
+dispatcher:
+
+- With an `Origin` header, the origin must equal `http://` or `https://` plus
+  the request `Host`, and the host must be an IP literal, `localhost`, the
+  configured `ip`, or an entry in `allowedHosts`. This blocks cross-site
+  WebSocket hijacking and DNS rebinding, which would otherwise let any visited
+  page call `fd_*` handlers on `127.0.0.1`.
+- Requests without `Origin` (non-browser clients) are allowed, but the optional
+  `token` still applies.
+- `token` must be URL-safe (`A-Z a-z 0-9 _ -`). The served page then injects
+  `window.__wsUrl = 'ws://<host>/?token=...'`, and the upgrade must carry it.
+- `allowedOrigins` adds exact origins for reverse proxies or custom hosts.
+- `checkOrigin = false` disables the checks; use it only on trusted networks.
+
+The portable host also rejects upgrades on paths other than `/` and `/ws`,
+caps message size with `maxFrameBytes` (default 16 MiB, checked after
+decompression too), and ignores malformed or oversized frames before routing.
+Incoming frames are only accepted after they parse, so a bad frame cannot steal
+the fCAL/push target.
+
+Bind to `127.0.0.1` unless remote access is intentional; a non-loopback bind
+without a token prints a warning. Run one `Ui2Proxy` per process: the Unix
+socket layer keeps per-process poll state, so stopping or pumping a second
+proxy can disturb the first.
 
 ---
 

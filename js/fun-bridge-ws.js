@@ -14,7 +14,24 @@
   ws.binaryType = 'arraybuffer';
 
   const callbacks = Object.create(null);
+  const timers = Object.create(null);
   let nextId = 1;
+
+  function clearTimer(id) {
+    if (timers[id] !== undefined) {
+      clearTimeout(timers[id]);
+      delete timers[id];
+    }
+  }
+
+  function failAll(reason) {
+    for (const id of Object.keys(callbacks)) {
+      const cb = callbacks[id];
+      delete callbacks[id];
+      clearTimer(id);
+      if (cb) cb(null, reason);
+    }
+  }
 
   // ---------- build the length-prefixed block ----------
   async function buildBlock(bytes) {
@@ -96,13 +113,29 @@
 
   function sendCall(name, args, timeout, callback) {
     const id = nextId++;
-    if (callback) callbacks[id] = callback;
+    if (callback) {
+      callbacks[id] = callback;
+      if (Number(timeout) > 0) {
+        timers[id] = setTimeout(function () {
+          delete timers[id];
+          const cb = callbacks[id];
+          if (cb) {
+            delete callbacks[id];
+            cb(null, 'timeout after ' + timeout + 'ms');
+          }
+        }, Number(timeout));
+      }
+    }
 
     const msg = { type: 'jCAL', id, name, args: args || [], timeout: timeout ?? 0 };
     const fdStr = FD.stringify(msg);
     const bytes = new TextEncoder('gbk').encode(fdStr);
     buildBlock(bytes).then(sendBlock);
   }
+
+  ws.addEventListener('close', function () {
+    failAll('connection closed');
+  });
 
   // ---------- fCAL dispatch ----------
   class FdDispatcherJS {
@@ -160,6 +193,7 @@
         const cb = callbacks[id];
         if (cb) {
           delete callbacks[id];
+          clearTimer(id);
           cb(val, err);
         }
       } else if (msg && msg.type === 'fCAL') {

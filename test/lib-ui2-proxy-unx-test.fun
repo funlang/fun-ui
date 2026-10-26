@@ -13,6 +13,7 @@
 
 use '../fun/lib/lib-ui2-proxy-unx.fun';
 use 'lib-winsock.fun';
+use 'lib-os.fun';
 
 fun pump(p, n)
   for i = 1 to n do
@@ -68,9 +69,37 @@ fun wsConnect(port)
   result = c;
 end fun;
 
+// WebSocket upgrade with explicit path, Origin, and Host headers.
+fun wsTry(port, path, origin, host)
+  var c = ConnectSocket('127.0.0.1', port);
+  var crlf = 13.toChar() & 10.toChar();
+  var req = 'GET ' & path & ' HTTP/1.1' & crlf;
+  if host <> nil then
+    req &= 'Host: ' & host & crlf;
+  else
+    req &= 'Host: 127.0.0.1:' & port & crlf;
+  end if;
+  if origin <> nil then req &= 'Origin: ' & origin & crlf; end if;
+  req &= 'Upgrade: websocket' & crlf &
+         'Connection: Upgrade' & crlf &
+         'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' & crlf &
+         'Sec-WebSocket-Version: 13' & crlf & crlf;
+  SendAll(c, req.escape());
+  result = c;
+end fun;
+
+fun hasText(s, t)
+  if s = nil then result = false; else result = s.subpos(t) >= 0; end if;
+end fun;
+
 class TestDispatcher = FdDispatcher()
+  var probeCount = 0;
   fun fd_ping(args)
     result = new [pong: args[0], answer: 42];
+  end fun;
+  fun fd_probe(args)
+    probeCount += 1;
+    result = true;
   end fun;
 end class;
 
@@ -166,6 +195,120 @@ p.PostData('raw-push');
 var push = RecvSome(w, 65536);
 ?. 'postdata frame: ' & (wsPayload(push) = 'raw-push');
 
+//--------------------------------------------------------------
+// 8. cross-site WebSocket requests are rejected
+//--------------------------------------------------------------
+var probeCall = 'type jCAL' & 10.toChar() & 'id 11' & 10.toChar() &
+                'name probe' & 10.toChar() & 'args' & 10.toChar() & 'timeout 0';
+
+fun wsHeader(origin, host)
+  var h = 'GET / HTTP/1.1' & 13.toChar() & 10.toChar() &
+          'Host: ' & host & 13.toChar() & 10.toChar();
+  if origin <> nil then h &= 'Origin: ' & origin & 13.toChar() & 10.toChar(); end if;
+  result = h & 13.toChar() & 10.toChar();
+end fun;
+
+var sameOrigin = 'http://127.0.0.1:' & port;
+?. 'same-origin allowed: ' & (p._checkWebSocket('/', wsHeader(sameOrigin, '127.0.0.1:' & port)) = '');
+?. 'cross-origin denied: ' & (p._checkWebSocket('/', wsHeader('https://evil.example', '127.0.0.1:' & port)) <> '');
+// DNS rebinding: Origin and Host agree, but the host is not an IP literal.
+?. 'rebinding denied: ' & (p._checkWebSocket('/', wsHeader('http://evil.example:' & port, 'evil.example:' & port)) <> '');
+?. 'missing origin allowed: ' & (p._checkWebSocket('/', wsHeader(nil, '127.0.0.1:' & port)) = '');
+?. 'unknown path denied: ' & (p._checkWebSocket('/other', wsHeader(nil, '127.0.0.1:' & port)) <> '');
+
+// One live rejection: the frame is dropped and the socket is closed.
+var before = p.dispatcher.probeCount;
+var bad = wsTry(port, '/', 'https://evil.example', nil);
+pump(p, 3);
+var badHs = RecvSome(bad, 4096);
+?. 'cross-origin upgrade answered: ' & hasText(badHs, ' 101 ');
+try SendAll(bad, wsMasked(ui2Frame(probeCall, false, 0))); except end try;
+pump(p, 3);
+var badRest = RecvSome(bad, 4096);
+?. 'cross-origin call rejected: ' & (p.dispatcher.probeCount = before);
+?. 'cross-origin reply suppressed: ' & (not hasText(badRest, 'jRET'));
+CloseSocket(bad);
+
+//--------------------------------------------------------------
+// 9. oversize frames are dropped before dispatch
+//--------------------------------------------------------------
+var probeBefore3 = p.dispatcher.probeCount;
+var limit = p.maxFrameBytes;
+p.maxFrameBytes = 64;
+var big = wsTry(port, '/', nil, nil);
+pump(p, 3);
+RecvSome(big, 4096);
+var bigCall = 'type jCAL' & 10.toChar() & 'id 12' & 10.toChar() &
+              'name probe' & 10.toChar() & 'args' & 10.toChar() & 'timeout 0' &
+              'x'.x(200);
+SendAll(big, wsMasked(ui2Frame(bigCall, false, 0)));
+pump(p, 3);
+?. 'oversize frame ignored: ' & (p.dispatcher.probeCount = probeBefore3);
+p.maxFrameBytes = limit;
+CloseSocket(big);
+
+//--------------------------------------------------------------
+// 10. fCAL timeout expires the callback
+//--------------------------------------------------------------
+var toErr = nil;
+p.dispatcher.callJS('never', [], 0, (v, e){ toErr = e; }, 80);
+var fcalTimeout = wsPayload(RecvSome(w, 65536));
+?. 'timeout fCAL sent: ' & hasText(fcalTimeout, 'type fCAL');
+for i = 1 to 30 do
+  p.RunOnce(20);
+  sleep(10);
+  exit when toErr <> nil;
+end do;
+?. 'fCAL timeout err: ' & (toErr = 'timeout');
+
+//--------------------------------------------------------------
+// 11. closing the page socket cancels outstanding fCAL callbacks
+//--------------------------------------------------------------
+var closeErr = nil;
+p.dispatcher.callJS('never', [], 0, (v, e){ closeErr = e; }, 0);
+RecvSome(w, 65536);
+var closeFrame = 0x88.toChar() & 0x80.toChar() & 1.toChar() & 2.toChar() & 3.toChar() & 4.toChar();
+SendAll(w, closeFrame);
+pump(p, 5);
+?. 'close cancels pending: ' & (closeErr = 'connection closed');
+
 CloseSocket(w);
 p.Stop();
+
+//--------------------------------------------------------------
+// 12. optional token: injected into the page and required on upgrade.
+// Runs after the first proxy is stopped: the Unix winsock server keeps
+// per-process poll state, so only one proxy should be live at a time.
+//--------------------------------------------------------------
+var p2 = Ui2Proxy();
+p2.port = 0;
+p2.jsDir = 'js';
+p2.page = '<html><head><title>t</title></head><body>token-page</body></html>';
+p2.token = 's3cret';
+p2.dispatcher = TestDispatcher();
+var port2 = p2.Start();
+var c3 = httpGet(port2, '/');
+pump(p2, 3);
+var page2 = RecvSome(c3, 65536);
+CloseSocket(c3);
+?. 'token injected: ' & hasText(page2, 'token=s3cret');
+?. 'token before bridge: ' & (page2.subpos('token=s3cret') < page2.subpos('fun-bridge-ws.js'));
+
+var noTok = wsTry(port2, '/', nil, nil);
+pump(p2, 3);
+RecvSome(noTok, 4096);
+try SendAll(noTok, wsMasked(ui2Frame(probeCall, false, 0))); except end try;
+pump(p2, 3);
+?. 'missing token rejected: ' & (p2.dispatcher.probeCount = 0);
+CloseSocket(noTok);
+
+var withTok = wsTry(port2, '/?token=s3cret', nil, nil);
+pump(p2, 3);
+RecvSome(withTok, 4096);
+SendAll(withTok, wsMasked(ui2Frame(probeCall, false, 0)));
+pump(p2, 3);
+var tokRet = RecvSome(withTok, 65536);
+?. 'token accepted: ' & (p2.dispatcher.probeCount = 1 and hasText(tokRet, 'jRET'));
+CloseSocket(withTok);
+p2.Stop();
 ?. 'RESULT: OK';

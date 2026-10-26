@@ -66,7 +66,7 @@ fun ui2Frame(data, compress, minSize)
   result = block;
 end fun;
 
-fun ui2Unframe(body)
+fun ui2Unframe(body, maxBytes)
   if body = nil or body.length() < 4 then
     result = nil;
     return;
@@ -79,9 +79,21 @@ fun ui2Unframe(body)
     result = nil;
     return;
   end if;
+  if maxBytes <> nil and maxBytes > 0 and n > maxBytes then
+    result = nil;
+    return;
+  end if;
   var payload = body.substr(4, n);
   if compressed then
     payload = inflate(payload);
+    if payload = nil then
+      result = nil;
+      return;
+    end if;
+    if maxBytes <> nil and maxBytes > 0 and payload.length() > maxBytes then
+      result = nil;
+      return;
+    end if;
   end if;
   result = payload;
 end fun;
@@ -108,20 +120,40 @@ fun ui2Mime(name)
   end if;
 end fun;
 
-fun ui2InjectBridge(page)
-  // Never inject twice; pages may already include the scripts.
-  if page.subpos('fun-bridge-ws.js') >= 0 or page.subpos('fun-bridge.js') >= 0 then
-    result = page;
-    return;
+fun ui2HeaderValue(header, name)
+  var m = header.match(('^' & name & ':\s*+(.++)$').toRegex('mi'));
+  if m.@@() = nil then result = ''; else result = '' & m.@(1); end if;
+end fun;
+
+fun ui2InjectBridge(page, token)
+  var p = page;
+  if token <> nil and token <> '' then
+    // The bridge reads window.__wsUrl when it loads, so the token must be set
+    // before the bridge tag, including when the page supplies its own bridge.
+    // The token is validated as URL-safe in Start().
+    var tokenTag = '<script>window.__wsUrl = "ws://" + location.host + "/?token=' &
+                   token & '";</script>' & 10.toChar();
+    var headAt = p.lower().subpos('<head>');
+    if headAt >= 0 then
+      var at = headAt + 6;
+      p = p.substr(0, at) & tokenTag & p.substr(at);
+    else
+      p = tokenTag & p;
+    end if;
   end if;
-  var tag = '<script src="/fd.js"></script>
-<script src="/fun-bridge-ws.js"></script>';
-  var at = page.lower().subpos('</head>');
-  if at >= 0 then
-    result = page.substr(0, at) & tag & page.substr(at);
-  else
-    result = tag & page;
+  // Never inject the bridge twice; pages may already include the scripts.
+  if p.subpos('fun-bridge-ws.js') < 0 and p.subpos('fun-bridge.js') < 0 then
+    var tag = '';
+    tag &= '<script src="/fd.js"></script>' & 10.toChar();
+    tag &= '<script src="/fun-bridge-ws.js"></script>';
+    var at = p.lower().subpos('</head>');
+    if at >= 0 then
+      p = p.substr(0, at) & tag & p.substr(at);
+    else
+      p = tag & p;
+    end if;
   end if;
+  result = p;
 end fun;
 
 //--------------------------------------------------------------
@@ -134,6 +166,19 @@ class Ui2Proxy(args)
   var page  = '';
   var dispatcher = nil;
   var autoOpen = false;
+
+  // Browser-facing security. Origin and Host are checked on every WebSocket
+  // upgrade so that another web page cannot call jCAL handlers (cross-site
+  // WebSocket hijacking), and a DNS-rebinding host cannot reach the socket.
+  //       allowedOrigins: extra exact origins, e.g. ['https://app.example']
+  //       allowedHosts:   extra bare host names allowed in Origin and Host
+  //       token:          optional URL-safe token required as ?token=...
+  // Set checkOrigin = false only for trusted private networks.
+  var allowedOrigins = nil;
+  var allowedHosts = nil;
+  var token = '';
+  var checkOrigin = true;
+  var maxFrameBytes = 16 * 1024 * 1024;
 
   var _server = nil;
   var _running = false;
@@ -149,6 +194,11 @@ class Ui2Proxy(args)
     if args.page <> nil then page = args.page; end if;
     if args.dispatcher <> nil then dispatcher = args.dispatcher; end if;
     if args.autoOpen <> nil then autoOpen = args.autoOpen; end if;
+    if args.allowedOrigins <> nil then allowedOrigins = args.allowedOrigins; end if;
+    if args.allowedHosts <> nil then allowedHosts = args.allowedHosts; end if;
+    if args.token <> nil then token = args.token; end if;
+    if args.checkOrigin <> nil then checkOrigin = args.checkOrigin; end if;
+    if args.maxFrameBytes <> nil then maxFrameBytes = args.maxFrameBytes; end if;
   end if;
 
   //---- lifecycle ------------------------------------------------
@@ -156,6 +206,13 @@ class Ui2Proxy(args)
     var self = this;
     // Derived classes get a chance to set page/dispatcher here.
     this.onReady();
+
+    if token <> '' and token.match(/[^A-Za-z0-9_-]/).@@() <> nil then
+      raise 'Ui2Proxy: token must contain only A-Z, a-z, 0-9, _ and -';
+    end if;
+    if ip <> '127.0.0.1' and ip <> '::1' and ip <> 'localhost' and token = '' then
+      ?. 'Ui2Proxy: listening on ' & ip & ' without a token; Origin and Host are checked.';
+    end if;
 
     if dispatcher <> nil then
       dispatcher.setSendRaw( data -> self._sendRaw(data) );
@@ -177,6 +234,7 @@ class Ui2Proxy(args)
 
   fun RunOnce(timeout)
     if _server = nil then result = 0; return; end if;
+    if dispatcher <> nil then dispatcher.expire(); end if;
     result = _server.RunOnce(timeout or 200);
   end fun;
 
@@ -199,6 +257,7 @@ class Ui2Proxy(args)
 
   fun Stop()
     _running = false;
+    if dispatcher <> nil then dispatcher.failPending('proxy stopped'); end if;
     if _server <> nil then
       _server.Stop(); ?. 'Ui2Proxy stopped.';
       _server = nil;
@@ -252,7 +311,7 @@ class Ui2Proxy(args)
         p = loaded;
       end if;
     end if;
-    result = ui2InjectBridge(p);
+    result = ui2InjectBridge(p, token);
   end fun;
 
   fun Asset(name)
@@ -292,11 +351,88 @@ class Ui2Proxy(args)
   end fun;
 
   fun _handle(req, header, body, sock, wargs)
+    // A frame can already be queued when Stop() clears the server.
+    if _server = nil then return; end if;
     if wargs and wargs.webSocket then
+      var reason = '';
+      if checkOrigin then reason = this._checkWebSocket(req, header); end if;
+      if reason <> '' then
+        ?. 'Ui2Proxy: rejected websocket: ' & reason;
+        // The HTTP layer has already sent 101, so close the socket instead of
+        // trying to answer with an HTTP error.
+        _server.Reply('', sock, [bin: true, close: true]);
+        return;
+      end if;
       this._handleWs(body, sock, wargs.op bit and 0x0F);
     else
       this._handleHttp(req, sock);
     end if;
+  end fun;
+
+  //--------------------------------------------------------------
+  // WebSocket origin / host checks
+  //--------------------------------------------------------------
+  fun _wsPathOk(path)
+    var p = path;
+    var qi = p.subpos('?');
+    if qi >= 0 then p = p.substr(0, qi); end if;
+    result = (p = '' or p = '/' or p = '/ws');
+  end fun;
+
+  fun _hostName(host)
+    var h = host;
+    if h.subpos('[') >= 0 then
+      var b = h.subpos('[');
+      var e = h.subpos(']');
+      if e > b then result = h.substr(b, e - b + 1); else result = h; end if;
+      return;
+    end if;
+    var c = h.subpos(':');
+    if c >= 0 then h = h.substr(0, c); end if;
+    result = h;
+  end fun;
+
+  fun _hostAllowed(host)
+    var hn = this._hostName(host).lower();
+    if hn = '' then result = false; return; end if;
+    if hn = 'localhost' or hn = '127.0.0.1' or hn = '[::1]' then result = true; return; end if;
+    if hn.match(/^\d{1,3}(\.\d{1,3}){3}$/).@@() <> nil then result = true; return; end if;
+    if ip <> '' and ip <> '0.0.0.0' and ip <> '::' then
+      if hn = ip.lower() then result = true; return; end if;
+      if hn = '[' & ip.lower() & ']' then result = true; return; end if;
+    end if;
+    if allowedHosts <> nil then
+      for x in allowedHosts do
+        if hn = x.lower() then result = true; return; end if;
+      end do;
+    end if;
+    result = false;
+  end fun;
+
+  // Returns '' when the upgrade is allowed, or a reason otherwise.
+  fun _checkWebSocket(path, header)
+    if not this._wsPathOk(path) then result = 'path not allowed'; return; end if;
+    var origin = ui2HeaderValue(header, 'Origin');
+    var host = ui2HeaderValue(header, 'Host');
+    if origin <> '' then
+      var o = origin.lower();
+      var h = host.lower();
+      var ok = false;
+      if allowedOrigins <> nil then
+        for x in allowedOrigins do
+          if o = x.lower() then ok = true; end if;
+        end do;
+      end if;
+      if not ok and h <> '' and (o = 'http://' & h or o = 'https://' & h) then
+        ok = this._hostAllowed(h);
+      end if;
+      if not ok then result = 'origin not allowed: ' & origin; return; end if;
+    end if;
+    if token <> '' and path.subpos('token=' & token) < 0 then
+      result = 'token required';
+      return;
+    end if;
+    result = '';
   end fun;
 
   fun _handleHttp(req, sock)
@@ -334,7 +470,10 @@ class Ui2Proxy(args)
   fun _handleWs(body, sock, op)
     if op = 8 then                       // close
       _server.Reply('', sock, [bin: true, close: true]);
-      if _last = sock then _last = nil; end if;
+      if _last = sock then
+        _last = nil;
+        if dispatcher <> nil then dispatcher.failPending('connection closed'); end if;
+      end if;
       return;
     end if;
     if op = 9 then                       // ping
@@ -343,11 +482,13 @@ class Ui2Proxy(args)
     end if;
     if op = 10 then return; end if;      // pong
 
-    _last = sock;
-    _current = sock;
     try
-      var payload = ui2Unframe(body);
+      var payload = ui2Unframe(body, maxFrameBytes);
       if payload <> nil and payload <> '' then
+        // Only a socket that delivered a valid frame becomes the push target,
+        // so dropped (oversize or malformed) frames cannot steal fCAL routing.
+        _last = sock;
+        _current = sock;
         var kind = ui2JsonType(payload);
         if kind = 'fRET' then
           if this.dispatcher <> nil then

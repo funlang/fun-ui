@@ -10,7 +10,15 @@
   }
 
   const callbacks = Object.create(null);
+  const timers = Object.create(null);
   let nextId = 1;
+
+  function clearTimer(id) {
+    if (timers[id] !== undefined) {
+      clearTimeout(timers[id]);
+      delete timers[id];
+    }
+  }
 
   // ---------- Pack / unpack (including compression) ----------
   async function buildBlock(data) {
@@ -98,7 +106,19 @@
   // ---------- Send jCAL ----------
   async function sendCall(name, args, timeout, callback) {
     const id = nextId++;
-    if (callback) callbacks[id] = callback;
+    if (callback) {
+      callbacks[id] = callback;
+      if (Number(timeout) > 0) {
+        timers[id] = setTimeout(function () {
+          delete timers[id];
+          const cb = callbacks[id];
+          if (cb) {
+            delete callbacks[id];
+            cb(null, 'timeout after ' + timeout + 'ms');
+          }
+        }, Number(timeout));
+      }
+    }
 
     const fdStr = buildFD('jCAL', id, name, args, timeout);
     const gbkBytes = new TextEncoder('gbk').encode(fdStr);
@@ -164,6 +184,7 @@
       const cb = callbacks[id];
       if (cb) {
         delete callbacks[id];
+        clearTimer(id);
         cb(val, err);
       }
     }

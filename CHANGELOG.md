@@ -6,6 +6,30 @@ All notable changes to fun-ui are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- WebSocket upgrade checks in the portable host: same-origin `Origin`/`Host`
+  validation (blocking cross-site WebSocket hijacking and DNS rebinding),
+  optional `allowedOrigins`/`allowedHosts`, an optional URL-safe `token`
+  injected into the served page, and a configurable `maxFrameBytes` cap
+  (16 MiB by default, enforced after decompression as well).
+- Call timeouts. `Fun(..., { timeout })` now expires callbacks and rejects
+  promises; `FdDispatcher.callJS` accepts a fifth `timeout` argument, and
+  `expire()`/`failPending(reason)` are public. `Ui2Proxy.RunOnce` expires
+  callbacks on every poll round.
+- Pending fCAL calls fail with `connection closed` when the page socket sends
+  a close frame, and with `proxy stopped` when the host stops.
+
+### Fixed
+
+- The dispatcher's pending-id collection used a name that collides with a
+  built-in member, so `expire()` never saw outstanding calls. Renamed to
+  `_fcalIds`.
+- Only frames that parse become the fCAL/`PostData` target; an oversized or
+  malformed frame can no longer steal routing from the real page connection.
+- A frame queued during `Stop()` no longer dereferences the cleared server
+  (`_server nil.Reply`).
+
 ## [1.0.1] - 2026-10-25
 
 ### Added

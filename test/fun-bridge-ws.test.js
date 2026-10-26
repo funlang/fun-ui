@@ -114,6 +114,24 @@ async function main() {
   check('unknown fCAL replies', ws.sent.length === before2 + 1);
   const errRet = decodeSent(ws.sent[ws.sent.length - 1]);
   check('unknown fCAL err', errRet.type === 'fRET' && errRet.err === true);
+
+  // ---------- jCAL timeout ----------
+  let timeoutErr = null;
+  win.Fun({ name: 'slow', timeout: 25, callback: (val, err) => { timeoutErr = err; } });
+  await new Promise(r => setTimeout(r, 60));
+  check('timeout callback err', timeoutErr === 'timeout after 25ms');
+
+  let rejected = null;
+  const pending = win.Fun({ name: 'slow', timeout: 25 });
+  pending.catch(e => { rejected = e; });
+  await new Promise(r => setTimeout(r, 60));
+  check('timeout rejects promise', rejected === 'timeout after 25ms');
+
+  // ---------- connection close fails pending calls ----------
+  let closeErr = null;
+  win.Fun({ name: 'slow', callback: (val, err) => { closeErr = err; } });
+  ws.emit('close', {});
+  check('close fails pending call', closeErr === 'connection closed');
 }
 
 main();

@@ -4,11 +4,18 @@
 // lib-fd-dispatcher: jCAL handler lookup, jRET replies, and fCAL/fRET
 // callbacks.
 
+// Milliseconds since the Unix epoch. Fun's `1.time()` returns days as a
+// floating-point value, so scale it here.
+fun fdNowMs()
+  result = 1.time() * 86400000;
+end fun;
+
 class FdDispatcher(args)
   var _prefix = args?.prefix? or 'fd_';
   var _sendRaw;
   var _sendFCAL;
-  var _jsCallbacks = [];
+  var _jsCallbacks = new [];
+  var _fcalIds = new [];    // ids with an outstanding fCAL, dense for iteration
   var _jsNextId = 1;
   var _next = nil;    // Next dispatcher in the chain of responsibility
 
@@ -82,22 +89,32 @@ class FdDispatcher(args)
 
   // ---------- fCAL/fRET support ----------
 
-  // Call into JavaScript
-  fun callJS(name, args, maxRetSize, callback)
+  // Call into JavaScript. `timeout` is in milliseconds; 0 means no timeout.
+  // Expired callbacks receive (nil, 'timeout') from expire(), which the host
+  // calls from its poll loop.
+  fun callJS(name, args, maxRetSize, callback, timeout)
     if _sendFCAL = nil then
       callback(nil, 'sendFCAL not configured');
       return;
     end if;
     _jsNextId += 1;
     var id = _jsNextId;
-    var msg = new [ type: 'fCAL', id: id, name: name, args: args or [], timeout: 0 ];
+    var ms = timeout or 0;
+    var deadline = 0;
+    if ms > 0 then
+      deadline = fdNowMs() + ms;
+    end if;
+    var msg = new [ type: 'fCAL', id: id, name: name, args: args or [], timeout: ms ];
     var fcalBytes = msg.@toJson(0, fd: true);
     var handle = _sendFCAL(fcalBytes, maxRetSize);
     if handle <= 0 then
       callback(nil, 'send fCAL failed');
       return;
     end if;
-    _jsCallbacks[id] = callback;
+    // Note: avoid names that collide with built-in members (e.g. `_jsPending`);
+    // the collision silently creates a fresh local collection.
+    _jsCallbacks[id] = new [ cb: callback, deadline: deadline ];
+    _fcalIds.@add(id);
   end fun;
 
   // Handle an fRET result (invoked by Ui2Form on MSG_FCAL_RESULT, or by the
@@ -107,11 +124,62 @@ class FdDispatcher(args)
     if obj = nil then return; end if;
     if obj.type = 'fRET' then
       var id = obj.id;
-      var cb = _jsCallbacks[id];
-      if cb <> nil then
+      var entry = _jsCallbacks[id];
+      if entry <> nil then
         _jsCallbacks[id] = nil;
-        cb(obj.val, obj.err);
+        if entry.cb <> nil then
+          entry.cb(obj.val, obj.err);
+        end if;
       end if;
     end if;
+  end fun;
+
+  // Drop callbacks whose deadline has passed. Call from the host's poll loop;
+  // `now` may be supplied to share one clock reading across dispatchers.
+  fun expire(now)
+    if _fcalIds.@count() = 0 then return; end if;
+    var t = now or fdNowMs();
+    var done = new [];
+    for id in _fcalIds do
+      var entry = _jsCallbacks[id];
+      if entry <> nil and entry.deadline > 0 and t >= entry.deadline then
+        _jsCallbacks[id] = nil;
+        done.@add(entry);
+      end if;
+    end do;
+    // Reply-completed ids are cleared by handleFret; drop them either way.
+    _compactPending();
+    if done.@count() = 0 then return; end if;
+    for entry in done do
+      if entry.cb <> nil then
+        entry.cb(nil, 'timeout');
+      end if;
+    end do;
+  end fun;
+
+  // Fail every outstanding JavaScript call, for example when the page socket
+  // closes or the host stops.
+  fun failPending(reason)
+    if _fcalIds.@count() = 0 then return; end if;
+    var done = new [];
+    for id in _fcalIds do
+      var entry = _jsCallbacks[id];
+      _jsCallbacks[id] = nil;
+      if entry <> nil then done.@add(entry); end if;
+    end do;
+    _fcalIds = new [];
+    for entry in done do
+      if entry.cb <> nil then
+        entry.cb(nil, reason or 'cancelled');
+      end if;
+    end do;
+  end fun;
+
+  fun _compactPending()
+    var alive = new [];
+    for id in _fcalIds do
+      if _jsCallbacks[id] <> nil then alive.@add(id); end if;
+    end do;
+    _fcalIds = alive;
   end fun;
 end class;
