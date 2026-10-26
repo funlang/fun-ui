@@ -6,6 +6,8 @@ All notable changes to fun-ui are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-10-26
+
 ### Added
 
 - **Native macOS host** (`src/prj/lib.wkwebview/`): a small AppKit window
@@ -107,5 +109,6 @@ First open-source release.
 - Requires a Fun 9.x runtime and Chromium-based browsers, because the bridges
   use `CompressionStream` and the `gbk` text-encoding label.
 
+[1.0.2]: https://github.com/funlang/fun-ui/releases/tag/v1.0.2
 [1.0.1]: https://github.com/funlang/fun-ui/releases/tag/v1.0.1
 [1.0.0]: https://github.com/funlang/fun-ui/releases/tag/v1.0.0
