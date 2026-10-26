@@ -51,9 +51,14 @@ git push origin vX.Y.Z
 
 ## 3. Publish
 
-- Create the GitHub release for the pushed tag.
-- Leave the description empty (or paste the same summary) so the tag annotation
-  is what readers see.
+- Pushing the tag triggers the `release` workflow, which creates the GitHub
+  release from the tag annotation (title `<tag> released`, notes are the
+  annotation itself).
+- Watch the run. If the repository does not let `GITHUB_TOKEN` create releases
+  (Settings > Actions > General > Workflow permissions), grant read and write
+  permissions, or create the release by hand with the same summary.
+- To backfill a tag whose release was never created, run the `release`
+  workflow manually with that tag name.
 - Open the release page and confirm the notes render.
 
 ## Repairing a published tag

@@ -1,0 +1,76 @@
+# Publish a GitHub release for an annotated version tag.
+#
+# Pushing a tag such as v1.0.2 creates the release straight from the tag
+# annotation, so the notes are exactly what `git tag -n99 -l v1.0.2` shows.
+# RELEASING.md still asks for an annotated tag with a summary: a lightweight
+# or title-only tag fails this job instead of publishing a blank page.
+#
+# Run it from the Actions UI with an existing tag name to backfill a release
+# that was never created (for example after changing this workflow).
+
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing annotated tag to publish
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out fun-ui
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Publish the tag annotation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -eu
+          tag="${INPUT_TAG:-$GITHUB_REF_NAME}"
+
+          if [ "$(git cat-file -t "refs/tags/$tag" 2>/dev/null || true)" != tag ]; then
+            echo "::error::$tag is missing or is not an annotated tag; write the summary with git tag -a" >&2
+            exit 1
+          fi
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::notice::release $tag already exists; left unchanged"
+            exit 0
+          fi
+
+          # A tag object is headers, a blank line, then the annotation.
+          git cat-file -p "refs/tags/$tag" | sed -e '1,/^$/d' > "$RUNNER_TEMP/notes.md"
+
+          # Prerelease tags (v1.1.0-rc1) are marked as such. Titles follow the
+          # existing releases: the tag name plus "released".
+          prerelease=""
+          case "$tag" in
+            *-*) prerelease="--prerelease" ;;
+          esac
+
+          gh release create "$tag" \
+            --verify-tag \
+            --title "$tag released" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            ${prerelease:+"$prerelease"}
+
+          echo "::notice::published $tag"

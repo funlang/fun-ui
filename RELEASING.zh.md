@@ -47,8 +47,13 @@ git push origin vX.Y.Z
 
 ## 3. 发布
 
-- 为已推送的 tag 创建 GitHub release。
-- 描述留空（或粘贴同样的摘要），让页面显示 tag 注解。
+- 推送 tag 会触发 `release` workflow，用 tag 注解自动创建 GitHub release
+  （标题为 `<tag> released`，说明就是注解本身）。
+- 注意该 run 的结果。如果仓库没有给 `GITHUB_TOKEN` 创建 release 的权限
+  （Settings > Actions > General > Workflow permissions），先授予读写权限，
+  或者手工用同样的摘要创建。
+- 某个 tag 的 release 没有创建成功时，手动运行 `release` workflow 并填入
+  该 tag 名即可补建。
 - 打开发布页确认说明正常渲染。
 
 ## 修补已发布的 tag
