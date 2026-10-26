@@ -8,6 +8,16 @@ All notable changes to fun-ui are documented here. The format follows
 
 ### Added
 
+- **Native macOS host** (`src/prj/lib.wkwebview/`): a small AppKit window
+  with a WKWebView that loads the page served by the portable proxy. It
+  exports `ui2_wk_init`, `ui2_wk_show`, `ui2_wk_iterate`, `ui2_wk_set_title`,
+  `ui2_wk_close`, and `ui2_wk_free`, pumps AppKit/WebKit work from `RunOnce`,
+  masks FPC's floating-point exceptions, and ad-hoc signs the dylib.
+- `lib-ui2-unx.fun` selects `libui2wkwebview.dylib` and the `ui2_wk_*` symbols
+  on macOS, keeping the browser fallback and `requireWebview` behaviour.
+- `test/lib-ui2-webview-mac-test.fun` and a `macos-wkwebview` CI job: the job
+  builds Fun with Homebrew FPC (requiring `getapi`), runs the portable loopback
+  test, builds the host, and runs the native-window smoke test on macos-14.
 - WebSocket upgrade checks in the portable host: same-origin `Origin`/`Host`
   validation (blocking cross-site WebSocket hijacking and DNS rebinding),
   optional `allowedOrigins`/`allowedHosts`, an optional URL-safe `token`
@@ -19,6 +29,11 @@ All notable changes to fun-ui are documented here. The format follows
   callbacks on every poll round.
 - Pending fCAL calls fail with `connection closed` when the page socket sends
   a close frame, and with `proxy stopped` when the host stops.
+
+### Changed
+
+- CI pins Fun v9.4.7, which includes the macOS `getapi`/libffi support, and
+  `setup-fun` builds Fun with Homebrew FPC plus `make-macos.sh` on macOS.
 
 ### Fixed
 

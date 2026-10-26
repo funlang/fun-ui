@@ -153,6 +153,8 @@ jobs:
           if [ "$rc" -ne 0 ]; then
             msg="$(tail -n 40 "$RUNNER_TEMP/loopback.log" | tr '\r' ' ' | tr '\n' '|' | sed 's/%/%25/g' | cut -c1-2000)"
             echo "::error title=macos loopback::$msg"
+          else
+            echo "::notice title=macos loopback::PASS"
           fi
           exit "$rc"
 
@@ -178,6 +180,9 @@ jobs:
             } > "$RUNNER_TEMP/macos-error.txt"
             msg="$(tr '\r' ' ' < "$RUNNER_TEMP/macos-error.txt" | tr '\n' '|' | sed 's/%/%25/g' | cut -c1-2000)"
             echo "::error title=macos webview test::$msg"
+          else
+            result="$(grep 'RESULT:' "$RUNNER_TEMP/mac.log" | tail -n 1)"
+            echo "::notice title=macos webview test::PASS ${result:-RESULT: OK}"
           fi
           exit "$rc"
 

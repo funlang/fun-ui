@@ -29,8 +29,8 @@ message format and JavaScript API.
 The Windows `Ui2Proxy` remains form-based. On Linux and macOS,
 `lib-ui2-proxy-unx.fun` provides the same host API without a window or
 `libwv2`. On Linux, `lib-ui2-unx.fun` can additionally embed the page in a
-GTK3/WebKit2GTK window. On macOS it currently falls back to the default
-browser.
+GTK3/WebKit2GTK window. On macOS it embeds the page in an AppKit window with
+WKWebView; without the host library it falls back to the default browser.
 
 **Goal:** offer the same Fun-side and JavaScript API on Windows, Linux and
 macOS, so a Fun program can serve a browser UI on every platform Fun supports.
@@ -41,10 +41,10 @@ macOS, so a Fun program can serve a browser UI on every platform Fun supports.
    from the WebView2 form and serves an external browser through the shared
    HTTP/WebSocket core. The Windows form-based proxy remains for backward
    compatibility.
-3. **Native webview backends (Linux done, macOS pending).** `Ui2Form` on Linux
-   loads the step-2 WebSocket page in a GTK3/WebKit2GTK window without changing
-   the message protocol or the JavaScript bridge. The macOS WKWebView host is
-   still to do; macOS uses the browser fallback today.
+3. **Native webview backends (Linux and macOS done).** `Ui2Form` loads the
+   step-2 WebSocket page in a GTK3/WebKit2GTK window on Linux and in an
+   AppKit/WKWebView window on macOS, without changing the message protocol or
+   the JavaScript bridge.
 4. **Release engineering.** Per-platform build scripts, CI coverage, packaged
    examples, and a compatibility matrix.
 
@@ -61,7 +61,7 @@ webview hosts, and the socket backend).
 | [`fun/lib/lib-ui2.fun`](fun/lib/lib-ui2.fun) | `Ui2Form`: WebView2 host form, message framing, compression, binary-safe transfer. |
 | [`fun/lib/lib-ui2-proxy.fun`](fun/lib/lib-ui2-proxy.fun) | `Ui2Proxy`: WebSocket mode. Serves the page and tunnels binary messages through a local WebSocket. |
 | [`fun/lib/lib-ui2-proxy-unx.fun`](fun/lib/lib-ui2-proxy-unx.fun) | Windowless `Ui2Proxy` for Linux and macOS: HTTP page plus WebSocket, no WebView2. |
-| [`fun/lib/lib-ui2-unx.fun`](fun/lib/lib-ui2-unx.fun) | `Ui2Form` for Unix: the portable proxy plus an optional native GTK/WebKit window (Linux) or browser fallback. |
+| [`fun/lib/lib-ui2-unx.fun`](fun/lib/lib-ui2-unx.fun) | `Ui2Form` for Unix: the portable proxy plus an optional native window (GTK/WebKit on Linux, WKWebView on macOS) or browser fallback. |
 | [`fun/lib/lib-fd-dispatcher.fun`](fun/lib/lib-fd-dispatcher.fun) | `FdDispatcher`: jCAL handler lookup, jRET replies, fCAL/fRET callbacks. |
 | [`fun/lib/lib-fd-dispatcher-async.fun`](fun/lib/lib-fd-dispatcher-async.fun) | `FdAsyncDispatcher`: runs jCAL handlers on the Fun async scheduler. |
 | [`fun/lib/lib-fd-dispatcher-proc.fun`](fun/lib/lib-fd-dispatcher-proc.fun) | File-queue dispatcher and worker for out-of-process UI back ends. |
@@ -71,6 +71,7 @@ webview hosts, and the socket backend).
 | [`js/fun-bridge-ws.js`](js/fun-bridge-ws.js) | WebSocket bridge with the same `window.Fun` API. |
 | [`src/prj/lib.wv2/`](src/prj/lib.wv2) | Delphi 2006 project that builds `libwv2.dll` on top of WebView4Delphi. |
 | [`src/prj/lib.webkitgtk/`](src/prj/lib.webkitgtk) | Small GTK3 + WebKit2GTK window host for Linux (`libui2webkitgtk.so`). |
+| [`src/prj/lib.wkwebview/`](src/prj/lib.wkwebview) | Small AppKit + WKWebView window host for macOS (`libui2wkwebview.dylib`). |
 
 ---
 
@@ -100,9 +101,13 @@ fun-ui/
 ├── src/prj/lib.webkitgtk/    # Native GTK/WebKit host (Linux, C)
 │   ├── host.c
 │   └── build.sh
+├── src/prj/lib.wkwebview/    # Native AppKit/WKWebView host (macOS, Objective-C)
+│   ├── host.m
+│   └── build.sh
 └── test/                    # Loopback and bridge tests
     ├── lib-ui2-proxy-unx-test.fun
     ├── lib-ui2-webview-lnx-test.fun
+    ├── lib-ui2-webview-mac-test.fun
     └── fun-bridge-ws.test.js
 ```
 
@@ -371,6 +376,49 @@ Without `requireWebview`, a missing host library falls back to
 loop diagnostics. The host masks FPC's unmasked floating-point exceptions
 before entering GTK/WebKit and drains the main context during shutdown.
 
+## Native WKWebView host (macOS)
+
+On macOS, `lib-ui2-unx.fun` selects the AppKit/WKWebView host and the
+`ui2_wk_*` entry points. Build it with:
+
+```bash
+src/prj/lib.wkwebview/build.sh
+```
+
+Use it from Fun:
+
+```fun
+use 'lib-ui2.fun';          // resolves to lib-ui2-unx.fun on Unix
+
+var form = Ui2Form();
+form.port = 8278;
+form.jsDir = 'js';
+form.hostLib = './src/prj/lib.wkwebview/libui2wkwebview.dylib';
+form.requireWebview = true; // fail instead of falling back to a browser
+form.dispatcher = MyDispatcher();
+form.Show();                // Start + Run
+```
+
+The host loads the URL served by the portable proxy, pumps AppKit and WebKit
+work from `RunOnce`, and stops when the window is closed. All entry points run
+on Fun's main thread. The dylib is ad-hoc signed by the build script, so it
+loads on Apple Silicon without a developer certificate.
+
+The native window needs a GUI session. A hosted macOS runner has one, so CI
+runs the full window test there. On a headless Mac, omit the host library and
+use the portable WebSocket host with an external browser.
+
+Build and run the native smoke test (macOS only):
+
+```bash
+src/prj/lib.wkwebview/build.sh
+funcmd test/lib-ui2-webview-mac-test.fun
+```
+
+The test loads a page, receives `Fun('native_ready')` over WebSocket, and
+fails if the window or callback is missing. Progress is written to
+`/tmp/ui2-mac-progress.txt`.
+
 ---
 
 ## Compatibility
@@ -383,6 +431,9 @@ before entering GTK/WebKit and drains the main context during shutdown.
 - Linux native windows need GTK3 and WebKit2GTK 4.0 or 4.1 development files
   at build time and the matching runtime libraries. Headless machines can use
   Xvfb plus a D-Bus session.
+- macOS 11 or later for the native WKWebView window. No extra runtime is
+  needed: the host links the system Cocoa and WebKit frameworks. A GUI session
+  is required; headless Macs can use the portable host with a browser.
 - Chromium-based browsers for `fun-bridge.js` and `fun-bridge-ws.js`, because
   the bridges use `CompressionStream` and the `gbk` text-encoding label.
 
@@ -399,10 +450,15 @@ node --experimental-websocket test/fun-bridge-ws.test.js
 src/prj/lib.webkitgtk/build.sh
 xvfb-run -a -s "-screen 0 1280x1024x24" \
   dbus-run-session -- funcmd test/lib-ui2-webview-lnx-test.fun
+
+# Native macOS window smoke test (needs a GUI session)
+src/prj/lib.wkwebview/build.sh
+funcmd test/lib-ui2-webview-mac-test.fun
 ```
 
-GitHub Actions runs both the loopback/bridge tests and the headless
-WebKitGTK test on ubuntu-24.04. See `.github/workflows/ci.yml`.
+GitHub Actions runs the loopback/bridge tests and the headless WebKitGTK test
+on ubuntu-24.04, and the portable loopback plus native WKWebView tests on
+macOS 14 arm64. See `.github/workflows/ci.yml`.
 
 ---
 
