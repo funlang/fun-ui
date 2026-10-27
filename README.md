@@ -23,6 +23,14 @@ WebSocket transport has no window at all: it serves the page and bridge scripts
 over HTTP and lets an ordinary browser connect. Both transports share the same
 message format and JavaScript API.
 
+The page side is plain HTML, CSS and JavaScript, so any front-end stack works.
+[z-data](https://github.com/Funlang/z-data) is a natural companion for Fun
+projects: a zero-dependency, no-build reactive framework that drives the DOM
+with template directives. The two are complementary rather than alternatives.
+Fun owns the data and business logic and `fun-ui` carries the messages, while
+z-data renders the view and calls back into Fun. See
+<https://funlang.org/z-data/>.
+
 ## Project status and roadmap
 
 **Status:** the WebView2 host (`libwv2.dll`) and `Ui2Form` are Windows-only.
@@ -420,6 +428,15 @@ fails if the window or callback is missing. Progress is written to
 `/tmp/ui2-mac-progress.txt`.
 
 ---
+
+## Related projects
+
+- [Fun](https://funlang.org): the language and runtime that drive `fun-ui`.
+- [z-data](https://github.com/Funlang/z-data): a zero-dependency, no-build
+  reactive front-end framework for the page side. It drives the DOM with
+  template directives and atomic CSS, and pairs with `fun-ui` instead of
+  competing with it. Fun and `fun-ui` supply the data and messages, z-data
+  renders the view and calls back into Fun.
 
 ## Compatibility
 

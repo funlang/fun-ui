@@ -21,6 +21,12 @@
 WebSocket 方式不再需要窗口：它通过 HTTP 提供页面和桥接脚本，让普通浏览器
 直接连接。
 
+页面一侧就是普通的 HTML、CSS 和 JavaScript，可以搭配任意前端方案。
+[z-data](https://github.com/Funlang/z-data) 是 Fun 项目很自然的搭档：它是一个
+零依赖、无需编译的响应式框架，用模板指令直接驱动 DOM。两者是互补关系而不是
+二选一：Fun 持有数据和业务逻辑，`fun-ui` 负责传递消息，z-data 负责渲染视图并
+回调 Fun。详见 <https://funlang.org/z-data/>。
+
 ## 项目状态与路线图
 
 **状态：** WebView2 宿主（`libwv2.dll`）和 `Ui2Form` 仅支持 Windows；
@@ -393,6 +399,13 @@ funcmd test/lib-ui2-webview-mac-test.fun
 都会失败。进度写入 `/tmp/ui2-mac-progress.txt`。
 
 ---
+
+## 相关项目
+
+- [Fun](https://funlang.org)：驱动 `fun-ui` 的语言与运行时。
+- [z-data](https://github.com/Funlang/z-data)：页面一侧的零依赖、无需编译的
+  响应式前端框架，用模板指令和原子化 CSS 直接驱动 DOM。它和 `fun-ui` 是互补
+  关系：Fun 与 `fun-ui` 提供数据和消息，z-data 渲染视图并回调 Fun。
 
 ## 兼容性
 

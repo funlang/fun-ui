@@ -8,6 +8,9 @@ All notable changes to fun-ui are documented here. The format follows
 
 ### Changed
 
+- The English and Chinese READMEs now introduce
+  [z-data](https://github.com/Funlang/z-data) in the overview as the
+  complementary page-side framework, and add a Related projects section.
 - CI caches the downloaded GTK/WebKit `.deb` packages and bounds every apt
   step, so `linux-webkitgtk` no longer spends the whole run on a slow package
   mirror.
