@@ -6,11 +6,17 @@ All notable changes to fun-ui are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `demo/z-data/`: a runnable five-line z-data page served by `Ui2Proxy`,
+  with `fd_greet` and a host script that prints the URL and opens a browser.
+
 ### Changed
 
 - The English and Chinese READMEs now introduce
   [z-data](https://github.com/Funlang/z-data) in the overview as the
-  complementary page-side framework, and add a Related projects section.
+  complementary page-side framework, add a Related projects section, and show
+  the page/`fd_greet` example behind the demo.
 - CI caches the downloaded GTK/WebKit `.deb` packages and bounds every apt
   step, so `linux-webkitgtk` no longer spends the whole run on a slow package
   mirror.

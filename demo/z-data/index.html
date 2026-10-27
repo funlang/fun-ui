@@ -1,0 +1,15 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>fun-ui + z-data</title>
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/gh/Funlang/z-data@main/dist/z-data.min.js"></script>
+<div z-data="{msg:'not called yet'}" #font-family=`system-ui` #padding=`2rem`>
+  <h1 :text=msg></h1>
+  <button @click="Fun('greet','z-data').then(v => $el.$data.msg = v)"
+          #font-size=`1rem` #padding="`.5rem 1rem`">Call Fun</button>
+</div>
+</body>
+</html>

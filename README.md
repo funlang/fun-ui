@@ -80,6 +80,7 @@ webview hosts, and the socket backend).
 | [`src/prj/lib.wv2/`](src/prj/lib.wv2) | Delphi 2006 project that builds `libwv2.dll` on top of WebView4Delphi. |
 | [`src/prj/lib.webkitgtk/`](src/prj/lib.webkitgtk) | Small GTK3 + WebKit2GTK window host for Linux (`libui2webkitgtk.so`). |
 | [`src/prj/lib.wkwebview/`](src/prj/lib.wkwebview) | Small AppKit + WKWebView window host for macOS (`libui2wkwebview.dylib`). |
+| [`demo/z-data/`](demo/z-data) | Minimal `Ui2Proxy` + z-data demo: a five-line page and one Fun method. |
 
 ---
 
@@ -437,6 +438,31 @@ fails if the window or callback is missing. Progress is written to
   template directives and atomic CSS, and pairs with `fun-ui` instead of
   competing with it. Fun and `fun-ui` supply the data and messages, z-data
   renders the view and calls back into Fun.
+
+### A five-line z-data page
+
+`Ui2Proxy` injects the bridge scripts, so the page only adds z-data:
+
+```html
+<script src="https://cdn.jsdelivr.net/gh/Funlang/z-data@main/dist/z-data.min.js"></script>
+<div z-data="{msg:'not called yet'}">
+  <p :text=msg></p>
+  <button @click="Fun('greet','z-data').then(v => $el.$data.msg = v)">Call Fun</button>
+</div>
+```
+
+The Fun side is one dispatcher method:
+
+```fun
+fun fd_greet(args)
+  result = 'Hello, ' & (args[0] or 'world') & '!';
+end fun;
+```
+
+The runnable version is [`demo/z-data/`](demo/z-data): run
+`funcmd demo/z-data/app.fun` from the repository root and click the button.
+That demo loads z-data from the CDN above; offline, inline a vendored
+`z-data.min.js` in the page instead.
 
 ## Compatibility
 

@@ -72,6 +72,7 @@ Windows 的 `Ui2Proxy` 仍然基于窗体。在 Linux 和 macOS 上，
 | [`src/prj/lib.wv2/`](src/prj/lib.wv2) | Delphi 2006 工程，基于 WebView4Delphi 构建 `libwv2.dll`。 |
 | [`src/prj/lib.webkitgtk/`](src/prj/lib.webkitgtk) | Linux 的小型 GTK3 + WebKit2GTK 窗口宿主（`libui2webkitgtk.so`）。 |
 | [`src/prj/lib.wkwebview/`](src/prj/lib.wkwebview) | macOS 的小型 AppKit + WKWebView 窗口宿主（`libui2wkwebview.dylib`）。 |
+| [`demo/z-data/`](demo/z-data) | 最小的 `Ui2Proxy` + z-data 演示：5 行页面加一个 Fun 方法。 |
 
 ---
 
@@ -406,6 +407,30 @@ funcmd test/lib-ui2-webview-mac-test.fun
 - [z-data](https://github.com/Funlang/z-data)：页面一侧的零依赖、无需编译的
   响应式前端框架，用模板指令和原子化 CSS 直接驱动 DOM。它和 `fun-ui` 是互补
   关系：Fun 与 `fun-ui` 提供数据和消息，z-data 渲染视图并回调 Fun。
+
+### 5 行 z-data 页面
+
+桥接脚本由 `Ui2Proxy` 自动注入，页面只需要引入 z-data：
+
+```html
+<script src="https://cdn.jsdelivr.net/gh/Funlang/z-data@main/dist/z-data.min.js"></script>
+<div z-data="{msg:'not called yet'}">
+  <p :text=msg></p>
+  <button @click="Fun('greet','z-data').then(v => $el.$data.msg = v)">Call Fun</button>
+</div>
+```
+
+Fun 一侧只有一个调度方法：
+
+```fun
+fun fd_greet(args)
+  result = 'Hello, ' & (args[0] or 'world') & '!';
+end fun;
+```
+
+可直接运行的版本在 [`demo/z-data/`](demo/z-data)：在仓库根目录执行
+`funcmd demo/z-data/app.fun`，然后点击按钮即可。该演示从上面的 CDN 加载
+z-data；离线时可把 `z-data.min.js` 内联到页面中。
 
 ## 兼容性
 
