@@ -5,7 +5,7 @@ language.
 
 **English** (this file) - [简体中文](README.zh.md)
 
-- Version: **1.0.2**
+- Version: **1.0.3**
 - Website: <https://funlang.org>
 - License: MIT (see [LICENSE](LICENSE))
 
