@@ -47,6 +47,12 @@ jobs:
           set -eu
           tag="${INPUT_TAG:-$GITHUB_REF_NAME}"
 
+          # Checkout compares the SHA of refs/tags/$tag with the commit SHA to
+          # decide whether the ref moved. For an annotated tag they differ, so
+          # it force-updates the local ref to a lightweight tag and the
+          # annotation is gone. Refetch the tag object from the remote.
+          git fetch --force --no-recurse-submodules origin "refs/tags/$tag:refs/tags/$tag"
+
           if [ "$(git cat-file -t "refs/tags/$tag" 2>/dev/null || true)" != tag ]; then
             echo "::error::$tag is missing or is not an annotated tag; write the summary with git tag -a" >&2
             exit 1
