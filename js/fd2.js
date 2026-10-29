@@ -45,6 +45,13 @@
         ZERO: 48, NINE: 57, x: 120, X: 88
     };
 
+    // Match the Fun writer's human-friendly 15-digit FloatToStr.
+    function formatNumber(v) {
+        if (!isFinite(v)) return 'null';
+        if (Number.isInteger(v)) return String(v);
+        return String(Number(v.toPrecision(15)));
+    }
+
     const STATE = { LINE_START: 0, KEY: 1 };
     const UNESCAPE_RE = /\\(?:u([Dd][89aAbB][0-9a-fA-F]{2})u([Dd][cCdDeEfF][0-9a-fA-F]{2})|u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2})|(.))/g;
     const NUMBER_RE = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
@@ -538,7 +545,7 @@
             if (value === null) return 'null';
             const t = typeof value;
             if (t === 'boolean') return value ? 'true' : 'false';
-            if (t === 'number') return (isNaN(value) || !isFinite(value)) ? 'null' : String(value);
+            if (t === 'number') return formatNumber(value);
             if (t === 'string') return this._quoteString(value);
             if (value instanceof Uint8Array) return this._serializeBinary(value);
             if (Array.isArray(value)) return this._serializeArray(value, isRoot);

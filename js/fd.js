@@ -132,6 +132,15 @@ const BYTE = {
     ZERO: 48, NINE: 57, x: 120, X: 88
 };
 
+// Match the Fun writer's human-friendly 15-digit FloatToStr. Integers are
+// written exactly; non-integers are rounded to 15 significant digits, so
+// 0.1+0.2 writes as 0.3. NaN/Inf have no FD spelling and become null.
+function formatNumber(v) {
+    if (!isFinite(v)) return 'null';
+    if (Number.isInteger(v)) return String(v);
+    return String(Number(v.toPrecision(15)));
+}
+
 const ParseState = { LINE_START: 0, KEY: 1 };
 
 // ========== Byte-stream parser ==========
@@ -542,7 +551,7 @@ class FDStringifier {
         if (value === null) return 'null';
         const t = typeof value;
         if (t === 'boolean') return value ? 'true' : 'false';
-        if (t === 'number') return (isNaN(value) || !isFinite(value)) ? 'null' : String(value);
+        if (t === 'number') return formatNumber(value);
         if (t === 'string') return this._quoteString(value);
         if (value instanceof Uint8Array) return this._serializeBinary(value);
         if (Array.isArray(value)) return this._serializeArray(value, isRoot);

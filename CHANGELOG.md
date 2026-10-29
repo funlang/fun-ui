@@ -15,7 +15,8 @@ All notable changes to fun-ui are documented here. The format follows
   quote large IDs if they must round-trip). Empty documents parse as `[]`,
   `\xHH` escapes are decoded, `#!kvd:<char>` selects a custom key/value
   delimiter, and duplicate named keys are last-wins. The writers quote
-  numeric-looking strings with the same grammar.
+  numeric-looking strings with the same grammar, and use 15 significant
+  digits for non-integer numbers so `0.1 + 0.2` writes as `0.3`.
 
 ## [1.0.3] - 2026-10-28
 
