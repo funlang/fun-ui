@@ -77,6 +77,12 @@ function check(FD, tag) {
   assert.strictEqual(FD.stringify({ a: '03' }), 'a 03', tag + ' write 03');
   assert.strictEqual(FD.stringify({ a: '+1' }), 'a +1', tag + ' write +1');
   assert.strictEqual(FD.stringify({ a: '9007199254740992' }), 'a "9007199254740992"', tag + ' write big');
+
+  // writer/reader round-trip must preserve the double bit pattern
+  for (const v of [0.1 + 0.2, 1 / 3, 1e-7, 1.2345678901234567,
+                   1.7976931348623157e308, 5e-324]) {
+    assert.strictEqual(p(FD.stringify({ x: v })).x, v, tag + ' float round-trip ' + v);
+  }
 }
 
 check(FD1, 'fd.js');
