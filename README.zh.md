@@ -4,7 +4,7 @@
 
 **简体中文**（本文件） - [English](README.md)
 
-- 版本：**1.0.3**
+- 版本：**1.0.4**
 - 网站：<https://funlang.org>
 - 许可证：MIT（见 [LICENSE](LICENSE)）
 

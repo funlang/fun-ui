@@ -6,6 +6,8 @@ All notable changes to fun-ui are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-10-29
+
 ### Fixed
 
 - `fd.js` / `fd2.js` now agree with the Fun interpreter and `lib-fd.fun` on
