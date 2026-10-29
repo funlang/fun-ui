@@ -6,6 +6,15 @@ All notable changes to fun-ui are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- `fd.js` / `fd2.js` now agree with the Fun interpreter and `lib-fd.fun` on
+  FD values: numbers follow the `fd.bnf.fd` grammar, integers outside
+  JavaScript's safe range stay strings (no more `"…n"` suffix), empty
+  documents parse as `[]`, `\xHH` escapes are decoded, `#!kvd:<char>`
+  selects a custom key/value delimiter, and duplicate named keys are
+  last-wins. The writers quote numeric-looking strings with the same grammar.
+
 ## [1.0.3] - 2026-10-28
 
 ### Added

@@ -46,9 +46,8 @@
     };
 
     const STATE = { LINE_START: 0, KEY: 1 };
-    const UNESCAPE_RE = /\\(?:u([Dd][89aAbB][0-9a-fA-F]{2})u([Dd][cCdDeEfF][0-9a-fA-F]{2})|u([0-9a-fA-F]{4})|(.))/g;
+    const UNESCAPE_RE = /\\(?:u([Dd][89aAbB][0-9a-fA-F]{2})u([Dd][cCdDeEfF][0-9a-fA-F]{2})|u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2})|(.))/g;
     const NUMBER_RE = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
-    const BIGINT_RE = /^-?\d{16,}$/;
     const FIXED_LEN_RE = /^[0-9A-Fa-f]+$/;
 
     function concatUint8Arrays(...arrs) {
@@ -140,6 +139,7 @@
             this._buffer = new Uint8Array(0);
             this._pos = 0;
             this._line = 1;
+            this._kvd = null;                  // #!kvd:<char> custom key/value delimiter
             this._streamEnded = false;
             this.issues = [];
             this._results = [];
@@ -158,6 +158,7 @@
         _isDigit(b)      { return b >= BYTE.ZERO && b <= BYTE.NINE; }
         _isAlphaX(b)     { return b === BYTE.x || b === BYTE.X; }
         _isQuote(b)      { return b === BYTE.QUOT || b === BYTE.APOS || b === BYTE.BACKTICK; }
+        _isKvd(b)        { return this._kvd === null ? this._isWhitespace(b) : b === this._kvd; }
         _decodeBytes(b)  { return b.length ? this._decoder.decode(b) : ''; }
 
         _updateLineForBytes(bytes) {
@@ -277,7 +278,7 @@
 
         *_parseKey() {
             const isQuoted = { value: false };
-            return yield* this._parseRawToken(b => this._isWhitespace(b) || this._isLineBreak(b), isQuoted);
+            return yield* this._parseRawToken(b => this._isKvd(b) || this._isLineBreak(b), isQuoted);
         }
 
         *_parseValue() {
@@ -292,11 +293,13 @@
             if (str === 'true') return true;
             if (str === 'false') return false;
             if (str === 'null') return null;
-            if (NUMBER_RE.test(str) && !str.startsWith('+')) {
-                if (BIGINT_RE.test(str) && str.indexOf('.') === -1 && str.indexOf('e') === -1 && str.indexOf('E') === -1)
-                    return str + 'n';
-                const num = parseFloat(str);
-                if (!isNaN(num)) return num;
+            if (NUMBER_RE.test(str)) {
+                const num = Number(str);
+                if (str.indexOf('.') === -1 && str.indexOf('e') === -1 && str.indexOf('E') === -1) {
+                    if (Number.isSafeInteger(num)) return num;
+                    return str;
+                }
+                if (isFinite(num)) return num;
             }
             return str;
         }
@@ -330,7 +333,7 @@
         }
 
         _unescapeJSON(s) {
-            return s.replace(UNESCAPE_RE, (_, highHex, lowHex, hex, ch) => {
+            return s.replace(UNESCAPE_RE, (_, highHex, lowHex, hex, hexByte, ch) => {
                 if (highHex && lowHex) {
                     const hi = parseInt(highHex, 16), lo = parseInt(lowHex, 16);
                     return String.fromCodePoint((hi - 0xD800) * 0x400 + (lo - 0xDC00) + 0x10000);
@@ -340,6 +343,7 @@
                     if (code >= 0xD800 && code <= 0xDFFF) this._addIssue(E_UNPAIRED_SURROGATE, hex);
                     return String.fromCharCode(code);
                 }
+                if (hexByte) return String.fromCharCode(parseInt(hexByte, 16));
                 switch (ch) {
                     case 'n': return '\n'; case 't': return '\t'; case 'r': return '\r';
                     case 'b': return '\b'; case 'f': return '\f'; case '\\': return '\\';
@@ -361,7 +365,12 @@
                                 yield* this._skipLineBreaks();
                                 continue outer;
                             } else if (b === BYTE.HASH) {
+                                const start = this._pos;
                                 yield* this._skipUntil(b => this._isLineBreak(b));
+                                if (this._pos - start > 6 &&
+                                    this._decodeBytes(this._buffer.slice(start, start + 6)) === '#!kvd:') {
+                                    this._kvd = this._buffer[start + 6];
+                                }
                                 yield* this._skipLineBreaks();
                                 continue outer;
                             } else break;
@@ -380,7 +389,7 @@
                             state = STATE.LINE_START;
                             continue;
                         }
-                        yield* this._skipWhile(b => this._isWhitespace(b));
+                        yield* this._skipWhile(b => this._isKvd(b));
                         let value;
                         if (!(yield* this._NEOF(1)) || this._isLineBreak(this._buffer[this._pos])) {
                             value = undefined;
@@ -434,7 +443,7 @@
             const roots = this._nodeStack[0].children;
             if (roots.length === 0) {
                 this._addIssue(I_EMPTY_DOC);
-                this._results.push({ value: {}, issues: this.issues.splice(0) });
+                this._results.push({ value: [], issues: this.issues.splice(0) });
             } else if (roots.every(r => r.key === '-')) {
                 this._results.push({ value: roots.map(r => this._buildValue(r)), issues: this.issues.splice(0) });
             } else {
@@ -598,7 +607,7 @@
         _shouldQuoteValue(s) {
             if (s === '') return true;
             if (s.includes('\n') || /^\s|\s$/.test(s)) return true;
-            if (/^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(s)) return true;
+            if (/^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(s)) return true;
             if (['true','false','null','[]','{}'].includes(s)) return true;
             if (/^["'`]/.test(s)) return true;
             return false;

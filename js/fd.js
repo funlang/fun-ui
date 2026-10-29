@@ -145,6 +145,7 @@ class FDParser {
         this._pos = 0;
         this._len = bytes.length;
         this._line = 1;                    // Current line number; incremented on \n
+        this._kvd = null;                  // #!kvd:<char> custom key/value delimiter
         this.issues = [];
         this._tokenize();
     }
@@ -161,6 +162,7 @@ class FDParser {
     _isDigit(b)       { return b >= BYTE.ZERO && b <= BYTE.NINE; }
     _isAlphaX(b)      { return b === BYTE.x || b === BYTE.X; }
     _isQuote(b)       { return b === BYTE.QUOT || b === BYTE.APOS || b === BYTE.BACKTICK; }
+    _isKvd(b)         { return this._kvd === null ? this._isWhitespace(b) : b === this._kvd; }
 
     // ---------- Basic cursor movement ----------
     _skipWhile(pred)      { while (this._pos < this._len && pred(this._bytes[this._pos])) this._pos++; }
@@ -269,7 +271,7 @@ class FDParser {
 
     _parseKey() {
         const isQuoted = { value: false };
-        return this._parseRawToken(b => this._isWhitespace(b) || this._isLineBreak(b), isQuoted);
+        return this._parseRawToken(b => this._isKvd(b) || this._isLineBreak(b), isQuoted);
     }
 
     _parseValue() {
@@ -287,13 +289,16 @@ class FDParser {
         if (str === 'false') return false;
         if (str === 'null') return null;
 
-        // Number parsing (including big integers)
-        if (/^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(str) && !str.startsWith('+')) {
-            if (/^-?\d{16,}$/.test(str) && str.indexOf('.') === -1 && str.indexOf('e') === -1 && str.indexOf('E') === -1) {
-                return str + 'n';   // Keep as a string to avoid precision loss
+        // FD number grammar (fd.bnf.fd). Integers outside the safe range and
+        // floats that overflow a double stay as their source text, matching
+        // the Pascal reader (no 'n' suffix: the string is the value).
+        if (/^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(str)) {
+            const num = Number(str);
+            if (str.indexOf('.') === -1 && str.indexOf('e') === -1 && str.indexOf('E') === -1) {
+                if (Number.isSafeInteger(num)) return num;
+                return str;
             }
-            const num = parseFloat(str);
-            if (!isNaN(num)) return num;
+            if (isFinite(num)) return num;
         }
         return str;   // Keep the original text as a string
     }
@@ -340,8 +345,8 @@ class FDParser {
      * then simple escapes.
      */
     _unescapeJSON(s) {
-        const re = /\\(?:u([Dd][89aAbB][0-9a-fA-F]{2})u([Dd][cCdDeEfF][0-9a-fA-F]{2})|u([0-9a-fA-F]{4})|(.))/g;
-        return s.replace(re, (match, highHex, lowHex, hex, ch) => {
+        const re = /\\(?:u([Dd][89aAbB][0-9a-fA-F]{2})u([Dd][cCdDeEfF][0-9a-fA-F]{2})|u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2})|(.))/g;
+        return s.replace(re, (match, highHex, lowHex, hex, hexByte, ch) => {
             if (highHex && lowHex) {        // Complete surrogate pair
                 const high = parseInt(highHex, 16);
                 const low  = parseInt(lowHex, 16);
@@ -355,6 +360,7 @@ class FDParser {
                 }
                 return String.fromCharCode(code);
             }
+            if (hexByte) return String.fromCharCode(parseInt(hexByte, 16));
             // Simple escape
             switch (ch) {
                 case 'n': return '\n'; case 't': return '\t'; case 'r': return '\r';
@@ -383,7 +389,12 @@ class FDParser {
                         continue;
                     }
                     if (this._pos < this._len && this._bytes[this._pos] === BYTE.HASH) {
+                        const start = this._pos;
                         this._skipUntil(b => this._isLineBreak(b));
+                        if (this._pos - start > 6 &&
+                            this._decodeBytes(this._bytes.slice(start, start + 6)) === '#!kvd:') {
+                            this._kvd = this._bytes[start + 6];
+                        }
                         this._skipLineBreaks();
                         continue;
                     }
@@ -400,7 +411,7 @@ class FDParser {
                         state = ParseState.LINE_START;
                         continue;
                     }
-                    this._skipWhile(b => this._isWhitespace(b));
+                    this._skipWhile(b => this._isKvd(b));
                     if (this._pos >= this._len || this._isLineBreak(this._bytes[this._pos])) {
                         this._logicalLines.push({ depth: curDepth, key, value: undefined });
                         state = ParseState.LINE_START;
@@ -472,7 +483,7 @@ class FDParser {
     parse() {
         if (!this._logicalLines.length) {
             this._addIssue('I_EmptyDoc');
-            return {};
+            return [];
         }
         const roots = this._buildTree();
         if (roots.length === 0) {
@@ -608,7 +619,7 @@ class FDStringifier {
     _shouldQuoteValue(s) {
         if (s === '') return true;
         if (s.includes('\n') || /^\s|\s$/.test(s)) return true;
-        if (/^[+-]?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(s)) return true;
+        if (/^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(s)) return true;
         if (['true','false','null','[]','{}'].includes(s)) return true;
         if (/^["'`]/.test(s)) return true;
         return false;
