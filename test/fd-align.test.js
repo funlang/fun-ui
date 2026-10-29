@@ -30,7 +30,9 @@ function check(FD, tag) {
   const one = s => p(s).a;
 
   // FD number grammar (fd.bnf.fd)
-  assert.strictEqual(one('a 03'), 3, tag + ' 03');
+  assert.strictEqual(one('a 03'), '03', tag + ' 03');
+  assert.strictEqual(one('a 01'), '01', tag + ' 01');
+  assert.strictEqual(one('a 0.5'), 0.5, tag + ' 0.5');
   assert.strictEqual(one('a 1.'), '1.', tag + ' 1.');
   assert.strictEqual(one('a .5'), '.5', tag + ' .5');
   assert.strictEqual(one('a 0x10'), '0x10', tag + ' 0x10');
@@ -71,7 +73,8 @@ function check(FD, tag) {
   // writer quoting follows the reader grammar
   assert.strictEqual(FD.stringify({ a: '0x10' }), 'a 0x10', tag + ' write 0x10');
   assert.strictEqual(FD.stringify({ a: '.5' }), 'a .5', tag + ' write .5');
-  assert.strictEqual(FD.stringify({ a: '01' }), 'a "01"', tag + ' write 01');
+  assert.strictEqual(FD.stringify({ a: '01' }), 'a 01', tag + ' write 01');
+  assert.strictEqual(FD.stringify({ a: '03' }), 'a 03', tag + ' write 03');
   assert.strictEqual(FD.stringify({ a: '+1' }), 'a +1', tag + ' write +1');
   assert.strictEqual(FD.stringify({ a: '9007199254740992' }), 'a "9007199254740992"', tag + ' write big');
 }

@@ -47,7 +47,7 @@
 
     const STATE = { LINE_START: 0, KEY: 1 };
     const UNESCAPE_RE = /\\(?:u([Dd][89aAbB][0-9a-fA-F]{2})u([Dd][cCdDeEfF][0-9a-fA-F]{2})|u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2})|(.))/g;
-    const NUMBER_RE = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+    const NUMBER_RE = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
     const FIXED_LEN_RE = /^[0-9A-Fa-f]+$/;
 
     function concatUint8Arrays(...arrs) {
@@ -607,7 +607,7 @@
         _shouldQuoteValue(s) {
             if (s === '') return true;
             if (s.includes('\n') || /^\s|\s$/.test(s)) return true;
-            if (/^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(s)) return true;
+            if (/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(s)) return true;
             if (['true','false','null','[]','{}'].includes(s)) return true;
             if (/^["'`]/.test(s)) return true;
             return false;

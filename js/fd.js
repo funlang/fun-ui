@@ -292,7 +292,7 @@ class FDParser {
         // FD number grammar (fd.bnf.fd). Integers outside the safe range and
         // floats that overflow a double stay as their source text, matching
         // the Pascal reader (no 'n' suffix: the string is the value).
-        if (/^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(str)) {
+        if (/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(str)) {
             const num = Number(str);
             if (str.indexOf('.') === -1 && str.indexOf('e') === -1 && str.indexOf('E') === -1) {
                 if (Number.isSafeInteger(num)) return num;
@@ -619,7 +619,7 @@ class FDStringifier {
     _shouldQuoteValue(s) {
         if (s === '') return true;
         if (s.includes('\n') || /^\s|\s$/.test(s)) return true;
-        if (/^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(s)) return true;
+        if (/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(s)) return true;
         if (['true','false','null','[]','{}'].includes(s)) return true;
         if (/^["'`]/.test(s)) return true;
         return false;

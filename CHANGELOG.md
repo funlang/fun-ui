@@ -9,8 +9,9 @@ All notable changes to fun-ui are documented here. The format follows
 ### Fixed
 
 - `fd.js` / `fd2.js` now agree with the Fun interpreter and `lib-fd.fun` on
-  FD values: numbers follow the `fd.bnf.fd` grammar, integers outside
-  JavaScript's safe range stay strings (no more `"…n"` suffix), empty
+  FD values: numbers use the RFC 8259 grammar (the same as `json: 2`), so
+  leading-zero forms such as `03`/`01` are strings; integers outside
+  JavaScript's safe range also stay strings (no more `"…n"` suffix), empty
   documents parse as `[]`, `\xHH` escapes are decoded, `#!kvd:<char>`
   selects a custom key/value delimiter, and duplicate named keys are
   last-wins. The writers quote numeric-looking strings with the same grammar.
