@@ -46,10 +46,10 @@ function check(FD, tag) {
   assert.strictEqual(one('a yes'), 'yes', tag + ' yes');
   assert.strictEqual(one('a no'), 'no', tag + ' no');
 
-  // safe integer boundary
-  assert.strictEqual(one('a 9007199254740991'), 9007199254740991, tag + ' safe int');
-  assert.strictEqual(one('a 9007199254740992'), '9007199254740992', tag + ' 2^53');
-  assert.strictEqual(one('a 9223372036854775808'), '9223372036854775808', tag + ' int64 overflow');
+  // host number type (IEEE-754 double); values beyond 2^53 may round
+  assert.strictEqual(one('a 9007199254740991'), 9007199254740991, tag + ' 2^53-1');
+  assert.strictEqual(one('a 9007199254740992'), 9007199254740992, tag + ' 2^53');
+  assert.strictEqual(typeof one('a 9223372036854775808'), 'number', tag + ' beyond int64 is number');
   assert.strictEqual(one('a 1e400'), '1e400', tag + ' float overflow');
 
   // empty / comment-only document

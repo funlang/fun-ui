@@ -295,10 +295,6 @@
             if (str === 'null') return null;
             if (NUMBER_RE.test(str)) {
                 const num = Number(str);
-                if (str.indexOf('.') === -1 && str.indexOf('e') === -1 && str.indexOf('E') === -1) {
-                    if (Number.isSafeInteger(num)) return num;
-                    return str;
-                }
                 if (isFinite(num)) return num;
             }
             return str;
