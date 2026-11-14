@@ -18,8 +18,12 @@
 #
 # Called by release.yml right after it creates the release: a release created
 # with GITHUB_TOKEN does not trigger a second workflow run on its own, so the
-# build has to be part of the release run. The dispatch entry point backfills
-# assets for a release that was published before this workflow existed.
+# build has to be part of the release run.
+#
+# Backfill runs: dispatch it with a tag, or push a change to this file on
+# master, which re-publishes the assets of the latest release. The second path
+# is how a release whose assets failed (for example a removed runner image)
+# gets repaired without moving its tag.
 
 name: assets
 
@@ -36,22 +40,46 @@ on:
         description: Existing release tag to attach the host libraries to
         required: true
         type: string
+  push:
+    branches: [master]
+    paths: ['.github/workflows/assets.yml']
 
 permissions:
   contents: write
 
 concurrency:
-  group: assets-${{ inputs.tag }}
+  group: assets-${{ github.event_name }}-${{ inputs.tag || github.sha }}
   cancel-in-progress: false
 
-env:
-  TAG: ${{ inputs.tag }}
-
 jobs:
+  resolve:
+    name: resolve tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Resolve the release tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -eu
+          tag="$INPUT_TAG"
+          if [ -z "$tag" ]; then
+            tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
+          fi
+          test -n "$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "::notice::publishing host libraries for $tag"
+
   linux-webkitgtk:
     name: linux-x86_64
+    needs: resolve
     runs-on: ubuntu-22.04
     timeout-minutes: 30
+    env:
+      TAG: ${{ needs.resolve.outputs.tag }}
     steps:
       - name: Check out the release tag
         uses: actions/checkout@v4
@@ -92,9 +120,12 @@ jobs:
 
   macos-wkwebview:
     name: macos-universal
+    needs: resolve
     # See ci.yml: a retired macOS image cancels the job before it starts.
     runs-on: macos-latest
     timeout-minutes: 30
+    env:
+      TAG: ${{ needs.resolve.outputs.tag }}
     steps:
       - name: Check out the release tag
         uses: actions/checkout@v4
