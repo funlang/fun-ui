@@ -112,10 +112,18 @@ fun ui2Mime(name)
   elsif n =~ /\.css$/ then result = 'text/css; charset=utf-8';
   elsif n =~ /\.html?$/ then result = 'text/html; charset=utf-8';
   elsif n =~ /\.json$/ then result = 'application/json; charset=utf-8';
+  elsif n =~ /\.map$/ then result = 'application/json; charset=utf-8';
+  elsif n =~ /\.wasm$/ then result = 'application/wasm';
   elsif n =~ /\.png$/ then result = 'image/png';
   elsif n =~ /\.jpe?g$/ then result = 'image/jpeg';
   elsif n =~ /\.gif$/ then result = 'image/gif';
   elsif n =~ /\.svg$/ then result = 'image/svg+xml';
+  elsif n =~ /\.ico$/ then result = 'image/x-icon';
+  elsif n =~ /\.woff2$/ then result = 'font/woff2';
+  elsif n =~ /\.woff$/ then result = 'font/woff';
+  elsif n =~ /\.ttf$/ then result = 'font/ttf';
+  elsif n =~ /\.txt$/ then result = 'text/plain; charset=utf-8';
+  elsif n =~ /\.md$/ then result = 'text/markdown; charset=utf-8';
   else result = 'application/octet-stream';
   end if;
 end fun;
@@ -164,6 +172,11 @@ class Ui2Proxy(args)
   var port  = @proxyPort;
   var jsDir = @proxyJsDir;
   var page  = '';
+  // Optional document root for static files. When set, any request that is
+  // not the page, a bridge asset, or favicon.ico is looked up here. This keeps
+  // pages fully offline: a demo can ship vendored JavaScript, CSS, and fonts
+  // beside its index.html instead of loading them from a CDN.
+  var wwwDir = '';
   var dispatcher = nil;
   var autoOpen = false;
 
@@ -192,6 +205,7 @@ class Ui2Proxy(args)
     if args.port <> nil then port = args.port; end if;
     if args.jsDir <> nil then jsDir = args.jsDir; end if;
     if args.page <> nil then page = args.page; end if;
+    if args.wwwDir <> nil then wwwDir = args.wwwDir; end if;
     if args.dispatcher <> nil then dispatcher = args.dispatcher; end if;
     if args.autoOpen <> nil then autoOpen = args.autoOpen; end if;
     if args.allowedOrigins <> nil then allowedOrigins = args.allowedOrigins; end if;
@@ -317,6 +331,21 @@ class Ui2Proxy(args)
   fun Asset(name)
     var s = nil;
     try s = (jsDir & '/' & name).load(); except s = nil; end try;
+    result = s;
+  end fun;
+
+  // Load a file below wwwDir. Reject absolute paths, backslashes, and any
+  // path segment that is exactly '..' so a request cannot escape the root.
+  fun StaticAsset(name)
+    if wwwDir = '' or name = '' then result = nil; return; end if;
+    if name.substr(0, 1) = '/' or name.subpos('\\') >= 0 then result = nil; return; end if;
+    if name = '..' or name.substr(0, 3) = '../' or
+       name.subpos('/../') >= 0 or
+       (name.length() >= 3 and name.substr(name.length() - 3) = '/..') then
+      result = nil; return;
+    end if;
+    var s = nil;
+    try s = (wwwDir & '/' & name).load(); except s = nil; end try;
     result = s;
   end fun;
 
@@ -462,6 +491,14 @@ class Ui2Proxy(args)
     if name = 'favicon.ico' then
       _server.Reply200('', sock, new ['Content-Type': 'image/x-icon']);
       return;
+    end if;
+
+    if wwwDir <> '' then
+      var f = this.StaticAsset(name);
+      if f <> nil then
+        _server.Reply200(f, sock, new ['Content-Type': ui2Mime(name)]);
+        return;
+      end if;
     end if;
 
     _server.Reply404('not found: ' & path, sock);

@@ -6,6 +6,17 @@ All notable changes to fun-ui are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `demo/monaco/`: an offline Monaco editor with a z-data toolbar and status
+  bar, highlighting for Fun, FD, JavaScript, HTML, CSS, and z-data, per-language
+  buffers, light/dark themes, and open/save. Monaco 0.31.1 and z-data are
+  vendored, so the page loads no CDN assets.
+- `Ui2Proxy.wwwDir` on the portable Unix host: an optional static document root
+  served below the page and bridge scripts. Requests containing `..` or
+  backslashes are rejected. The proxy test covers a static file and a traversal
+  attempt.
+
 ## [1.0.4] - 2026-10-29
 
 ### Fixed

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fun Monaco Editor</title>
+  <link rel="stylesheet" href="/vendor/monaco/vs/editor/editor.main.css">
+  <link rel="stylesheet" href="/css/app.css">
+  <script src="/vendor/z-data/z-data.min.js"></script>
+  <script src="/js/languages.js"></script>
+  <script src="/js/samples.js"></script>
+  <script src="/js/app.js"></script>
+  <script src="/vendor/monaco/vs/loader.js"></script>
+</head>
+<body>
+  <main z-data="app()"
+        init="Editor.start(this)"
+        z-cloak
+        :class="{ dark: theme === 'dark', light: theme === 'light' }">
+
+    <header class="toolbar">
+      <div class="brand">Fun <span>Monaco</span></div>
+
+      <label class="field">
+        <span>Language</span>
+        <select id="lang" :value=lang @change="Editor.setLang(this.value)">
+          <option value="fun">Fun</option>
+          <option value="fd">FD</option>
+          <option value="js">JavaScript</option>
+          <option value="html">HTML</option>
+          <option value="css">CSS</option>
+          <option value="zdata">z-data</option>
+        </select>
+      </label>
+
+      <button @click="Editor.loadSample()" title="Load the starter snippet for this language">Sample</button>
+      <button @click="Editor.openFile()" title="Open a local file">Open</button>
+      <button @click="Editor.download()" title="Download the current buffer (Ctrl/Cmd+S)">Save</button>
+      <button @click="Editor.toggleTheme()" title="Toggle light and dark theme">Theme: <span :text="theme === 'dark' ? 'dark' : 'light'"></span></button>
+
+      <span class="message" :text=message></span>
+    </header>
+
+    <div id="editor" z-none></div>
+
+    <footer class="statusbar">
+      <span class="status">
+        <b :text=langLabel></b>
+        <span class="sep">·</span>
+        <span :text=position></span>
+      </span>
+      <span class="status bridge" :text=funStatus></span>
+    </footer>
+
+    <input id="file" type="file" hidden
+           accept=".fun,.fd,.js,.mjs,.cjs,.html,.htm,.css,text/*"
+           @change="Editor.onFile(this)">
+  </main>
+</body>
+</html>

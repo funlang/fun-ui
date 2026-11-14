@@ -73,6 +73,7 @@ Windows 的 `Ui2Proxy` 仍然基于窗体。在 Linux 和 macOS 上，
 | [`src/prj/lib.webkitgtk/`](src/prj/lib.webkitgtk) | Linux 的小型 GTK3 + WebKit2GTK 窗口宿主（`libui2webkitgtk.so`）。 |
 | [`src/prj/lib.wkwebview/`](src/prj/lib.wkwebview) | macOS 的小型 AppKit + WKWebView 窗口宿主（`libui2wkwebview.dylib`）。 |
 | [`demo/z-data/`](demo/z-data) | 最小的 `Ui2Proxy` + z-data 演示：5 行页面加一个 Fun 方法。 |
+| [`demo/monaco/`](demo/monaco) | 离线 Monaco 编辑器：z-data 做界面，支持 Fun/FD/JS/HTML/CSS/z-data 加亮。 |
 
 ---
 
@@ -142,6 +143,7 @@ end class;
 var proxy = Ui2Proxy();
 proxy.port = 8278;          // 0 表示随机端口
 proxy.jsDir = 'js';         // 包含 fd.js 和 fun-bridge-ws.js 的目录
+proxy.wwwDir = 'www';       // 可选的静态文件根目录
 proxy.page = '<h1>Hello from Fun</h1>';
 proxy.dispatcher = AppDispatcher();
 var port = proxy.Start();   // 非阻塞，返回实际端口
@@ -153,6 +155,11 @@ proxy.Run();                // 阻塞轮询循环
 `<script src="/fun-bridge-ws.js">`，除非页面已经包含桥接脚本。设置
 `proxy.autoOpen = true` 可自动打开默认浏览器。HTTP 服务默认绑定
 `127.0.0.1`；需要供其他机器访问时设置 `proxy.ip = '0.0.0.0'`。
+
+设置 `proxy.wwwDir` 后，除页面、三个桥接脚本和 `favicon.ico` 之外的请求都会
+从该目录读取，包含 `..` 或反斜杠的路径会被拒绝。离线
+[Monaco 演示](demo/monaco) 就靠它加载随仓库附带的 JavaScript、CSS 和字体，
+不需要 CDN，也不需要再起一个静态服务器。
 
 ---
 
@@ -431,6 +438,14 @@ end fun;
 可直接运行的版本在 [`demo/z-data/`](demo/z-data)：在仓库根目录执行
 `funcmd demo/z-data/app.fun`，然后点击按钮即可。该演示从上面的 CDN 加载
 z-data；离线时可把 `z-data.min.js` 内联到页面中。
+
+### 离线 Monaco 编辑器
+
+[`demo/monaco/`](demo/monaco) 是更大的页面演示：Monaco 放在
+`demo/monaco/www/vendor` 下，z-data 驱动工具栏和状态栏，
+`Ui2Proxy.wwwDir` 提供静态文件。它支持 Fun、FD、JavaScript、HTML、CSS 和
+z-data 加亮，并继续通过同一套 WebSocket 桥接调用 `fd_info`。在仓库根目录执行
+`funcmd demo/monaco/app.fun` 即可。
 
 ## 兼容性
 

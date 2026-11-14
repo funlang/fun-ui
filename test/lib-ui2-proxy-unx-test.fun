@@ -106,6 +106,7 @@ end class;
 var p = Ui2Proxy();
 p.port = 0;
 p.jsDir = 'js';   // relative to the repository root
+p.wwwDir = 'test/www';
 p.page = '<html><head><title>t</title></head><body>hello-ui</body></html>';
 p.dispatcher = TestDispatcher();
 var port = p.Start();
@@ -134,6 +135,21 @@ CloseSocket(c2);
 ?. 'asset 200: ' & (js.subpos(' 200 ') >= 0);
 ?. 'asset has handleFCAL: ' & (js.subpos('function handleFCAL') >= 0);
 ?. 'asset has fRET: ' & (js.subpos('fRET') >= 0);
+
+//--------------------------------------------------------------
+// 2b. static files from wwwDir, with traversal rejected
+//--------------------------------------------------------------
+var c2b = httpGet(port, '/hello.txt');
+pump(p, 5);
+var txt = RecvSome(c2b, 65536);
+CloseSocket(c2b);
+?. 'wwwDir 200: ' & (txt.subpos(' 200 ') >= 0);
+?. 'wwwDir body: ' & (txt.subpos('hello static') >= 0);
+var c2c = httpGet(port, '/../README.md');
+pump(p, 5);
+var esc = RecvSome(c2c, 65536);
+CloseSocket(c2c);
+?. 'wwwDir traversal blocked: ' & (esc.subpos(' 404 ') >= 0);
 
 //--------------------------------------------------------------
 // 3. WebSocket handshake

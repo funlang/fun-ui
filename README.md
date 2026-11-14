@@ -81,6 +81,7 @@ webview hosts, and the socket backend).
 | [`src/prj/lib.webkitgtk/`](src/prj/lib.webkitgtk) | Small GTK3 + WebKit2GTK window host for Linux (`libui2webkitgtk.so`). |
 | [`src/prj/lib.wkwebview/`](src/prj/lib.wkwebview) | Small AppKit + WKWebView window host for macOS (`libui2wkwebview.dylib`). |
 | [`demo/z-data/`](demo/z-data) | Minimal `Ui2Proxy` + z-data demo: a five-line page and one Fun method. |
+| [`demo/monaco/`](demo/monaco) | Offline Monaco editor with a z-data chrome and Fun/FD/JS/HTML/CSS/z-data highlighting. |
 
 ---
 
@@ -151,6 +152,7 @@ end class;
 var proxy = Ui2Proxy();
 proxy.port = 8278;          // 0 picks an ephemeral port
 proxy.jsDir = 'js';         // directory containing fd.js and fun-bridge-ws.js
+proxy.wwwDir = 'www';       // optional static document root
 proxy.page = '<h1>Hello from Fun</h1>';
 proxy.dispatcher = AppDispatcher();
 var port = proxy.Start();   // non-blocking; returns the bound port
@@ -163,6 +165,12 @@ proxy.Run();                // blocking poll loop
 includes a bridge. Set `proxy.autoOpen = true` to launch the default browser.
 The HTTP server binds to `127.0.0.1` by default; set `proxy.ip = '0.0.0.0'` to
 serve other machines.
+
+Set `proxy.wwwDir` to serve static files from a directory. Requests other than
+the page, the three bridge scripts, and `favicon.ico` are resolved below that
+root; paths containing `..` or backslashes are rejected. This is what lets the
+offline [Monaco demo](demo/monaco) load its vendored JavaScript, CSS, and
+fonts without a CDN or a second web server.
 
 ---
 
@@ -463,6 +471,14 @@ The runnable version is [`demo/z-data/`](demo/z-data): run
 `funcmd demo/z-data/app.fun` from the repository root and click the button.
 That demo loads z-data from the CDN above; offline, inline a vendored
 `z-data.min.js` in the page instead.
+
+### Offline Monaco editor
+
+[`demo/monaco/`](demo/monaco) is a larger page-side demo: Monaco is vendored
+under `demo/monaco/www/vendor`, z-data drives the toolbar and status bar, and
+`Ui2Proxy.wwwDir` serves the static tree. It highlights Fun, FD, JavaScript,
+HTML, CSS, and z-data, and still calls `fd_info` through the same WebSocket
+bridge. Run `funcmd demo/monaco/app.fun` from the repository root.
 
 ## Compatibility
 
