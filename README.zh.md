@@ -408,6 +408,40 @@ funcmd test/lib-ui2-webview-mac-test.fun
 
 ---
 
+## 预编译的原生宿主库
+
+每个 Release 页面都会附上原生窗口宿主，因此已经有 Fun 解释器的项目无需 C
+或 Objective-C 工具链就能加一个界面窗口：
+
+| 附件 | 平台 |
+| ---- | ---- |
+| `libui2webkitgtk-linux-x86_64.so` | Linux x86_64，GTK3 + WebKit2GTK 4.1 |
+| `libui2wkwebview-macos-universal.dylib` | macOS 11+，arm64 与 x86_64 |
+
+把文件放在脚本旁边，用 `form.hostLib` 指定，或在程序开头设置一次全局
+`@ui2webkitdll`：
+
+```fun
+@ui2webkitdll = './libui2webkitgtk-linux-x86_64.so';          // Linux
+// @ui2webkitdll = './libui2wkwebview-macos-universal.dylib'; // macOS
+
+var form = Ui2Form();
+form.requireWebview = true;
+form.Show();
+```
+
+Linux 库链接 GTK3 与 WebKit2GTK 4.1，在 Ubuntu 22.04（glibc 2.35）上构建，
+因此适用于 glibc 2.35 及更新的系统。Debian/Ubuntu 需要
+`libwebkit2gtk-4.1-0`，Fedora 需要 `webkit2gtk4.1`。只提供 WebKit2GTK 4.0
+的发行版（RHEL、Rocky Linux 9）需要用
+`src/prj/lib.webkitgtk/build.sh` 自行构建，该脚本会选择 4.0。macOS 的 dylib
+是 arm64 + x86_64 通用二进制，已做 ad-hoc 签名，不需要开发者证书。
+
+附件里没有 `libwv2.dll`：它是 32 位 Delphi 2006 + WebView4Delphi 构建，见
+[构建原生 WebView2 宿主](#构建原生-webview2-宿主)。
+
+---
+
 ## 相关项目
 
 - [Fun](https://funlang.org)：驱动 `fun-ui` 的语言与运行时。

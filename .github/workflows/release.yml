@@ -80,3 +80,16 @@ jobs:
             ${prerelease:+"$prerelease"}
 
           echo "::notice::published $tag"
+
+  # Native window hosts become release assets, so a Fun project can add a
+  # window without a C/Objective-C build environment. This is a reusable
+  # workflow rather than a separate run triggered by the release event:
+  # events created with GITHUB_TOKEN do not start new workflow runs.
+  assets:
+    name: host libraries
+    needs: release
+    permissions:
+      contents: write
+    uses: ./.github/workflows/assets.yml
+    with:
+      tag: ${{ inputs.tag || github.ref_name }}

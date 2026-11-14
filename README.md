@@ -438,6 +438,43 @@ fails if the window or callback is missing. Progress is written to
 
 ---
 
+## Prebuilt native host libraries
+
+Each release page carries the native window hosts, so a project that already
+has a Fun interpreter can add a UI window without a C or Objective-C
+toolchain:
+
+| Asset | Platform |
+| ----- | -------- |
+| `libui2webkitgtk-linux-x86_64.so` | Linux x86_64, GTK3 + WebKit2GTK 4.1 |
+| `libui2wkwebview-macos-universal.dylib` | macOS 11+, arm64 and x86_64 |
+
+Put the file next to your script and point the host at it, either per form
+with `form.hostLib` or once for the whole program with the global
+`@ui2webkitdll`:
+
+```fun
+@ui2webkitdll = './libui2webkitgtk-linux-x86_64.so';          // Linux
+// @ui2webkitdll = './libui2wkwebview-macos-universal.dylib'; // macOS
+
+var form = Ui2Form();
+form.requireWebview = true;
+form.Show();
+```
+
+The Linux library links from GTK3 and WebKit2GTK 4.1 and is built on
+Ubuntu 22.04 (glibc 2.35), so it runs on glibc 2.35 and newer. Debian and
+Ubuntu need `libwebkit2gtk-4.1-0`; Fedora needs `webkit2gtk4.1`. Distributions
+that only ship WebKit2GTK 4.0 (RHEL, Rocky Linux 9) have to build the host
+themselves with `src/prj/lib.webkitgtk/build.sh`, which selects 4.0. The macOS
+dylib is a universal arm64 + x86_64 binary, ad-hoc signed, and needs no
+developer certificate.
+
+`libwv2.dll` is not in the assets: it is a 32-bit Delphi 2006 build against
+WebView4Delphi (see [Building the native WebView2 host](#building-the-native-webview2-host)).
+
+---
+
 ## Related projects
 
 - [Fun](https://funlang.org): the language and runtime that drive `fun-ui`.

@@ -1,0 +1,134 @@
+# Build the native window hosts for a published release and attach them to
+# the release assets.
+#
+# The Fun interpreter already ships prebuilt binaries, so a project only needs
+# a Fun script to get a window. The native view hosts were the last piece that
+# still required a C/Objective-C toolchain; this workflow removes that: users
+# download the host library for their platform instead of building it.
+#
+#   libui2webkitgtk-linux-x86_64.so      GTK3 + WebKit2GTK 4.1, built on
+#                                        ubuntu-22.04 (glibc 2.35 baseline)
+#   libui2wkwebview-macos-universal.dylib  AppKit + WKWebView, arm64 + x86_64
+#
+# Windows is not here: libwv2.dll is a Delphi 2006 project
+# (src/prj/lib.wv2/make-2006.bat) that needs the Windows toolchain and the
+# WebView4Delphi sources, so it is still built by hand.
+#
+# The asset name carries no version: the release page already pins one.
+#
+# Called by release.yml right after it creates the release: a release created
+# with GITHUB_TOKEN does not trigger a second workflow run on its own, so the
+# build has to be part of the release run. The dispatch entry point backfills
+# assets for a release that was published before this workflow existed.
+
+name: assets
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag to attach the host libraries to
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to attach the host libraries to
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: assets-${{ inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ inputs.tag }}
+
+jobs:
+  linux-webkitgtk:
+    name: linux-x86_64
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Install GTK and WebKitGTK
+        run: |
+          set -eu
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      - name: Build the WebKitGTK host
+        run: src/prj/lib.webkitgtk/build.sh
+
+      - name: Check the library loads and exports the entry points
+        run: |
+          set -eu
+          so=src/prj/lib.webkitgtk/libui2webkitgtk.so
+          ldd "$so"
+          for sym in ui2_gtk_init ui2_gtk_show ui2_gtk_iterate ui2_gtk_close ui2_gtk_set_title; do
+            nm -D --defined-only "$so" | grep -qw "$sym"
+          done
+          strip --strip-unneeded "$so"
+          cp "$so" libui2webkitgtk-linux-x86_64.so
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          sha256sum libui2webkitgtk-linux-x86_64.so > libui2webkitgtk-linux-x86_64.so.sha256
+          gh release upload "$TAG" \
+            libui2webkitgtk-linux-x86_64.so \
+            libui2webkitgtk-linux-x86_64.so.sha256 \
+            --clobber
+
+  macos-wkwebview:
+    name: macos-universal
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      # One universal binary instead of two assets: Apple clang links each
+      # -arch slice and lipo's them together, and the SDK on the arm64 runner
+      # carries both slices.
+      - name: Build the WKWebView host (arm64 + x86_64)
+        run: |
+          set -eu
+          mkdir -p build
+          clang -O2 -fobjc-arc -fPIC -Wall -Wextra -Wno-deprecated-declarations \
+            -dynamiclib -arch arm64 -arch x86_64 \
+            -framework Cocoa -framework WebKit \
+            -o build/libui2wkwebview.dylib src/prj/lib.wkwebview/host.m
+          lipo -info build/libui2wkwebview.dylib
+          codesign --force --sign - build/libui2wkwebview.dylib
+          for arch in arm64 x86_64; do
+            lipo -thin "$arch" build/libui2wkwebview.dylib -output "build/$arch.dylib"
+            for sym in ui2_wk_init ui2_wk_show ui2_wk_iterate ui2_wk_close ui2_wk_set_title; do
+              nm -gU "build/$arch.dylib" | grep -qw "_$sym"
+            done
+          done
+          cp build/libui2wkwebview.dylib libui2wkwebview-macos-universal.dylib
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          shasum -a 256 libui2wkwebview-macos-universal.dylib \
+            > libui2wkwebview-macos-universal.dylib.sha256
+          gh release upload "$TAG" \
+            libui2wkwebview-macos-universal.dylib \
+            libui2wkwebview-macos-universal.dylib.sha256 \
+            --clobber

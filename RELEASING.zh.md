@@ -54,6 +54,14 @@ git push origin vX.Y.Z
   或者手工用同样的摘要创建。
 - 某个 tag 的 release 没有创建成功时，手动运行 `release` workflow 并填入
   该 tag 名即可补建。
+
+- 同一次运行还会编译原生宿主库并附加到 release（`assets.yml`：
+  `libui2webkitgtk-linux-x86_64.so`、`libui2wkwebview-macos-universal.dylib`
+  以及各自的 `.sha256`）。用 `GITHUB_TOKEN` 创建的 release 不会触发新的
+  workflow，所以这一步做成 release 运行内的 job，而不是单独的 workflow。
+  附件缺失时，手动运行 `assets` workflow 并填入 tag 即可补上。Linux 库基于
+  Ubuntu 22.04 的 WebKit2GTK 4.1 构建，macOS 库是 arm64 + x86_64 通用二进制。
+
 - 打开发布页确认说明正常渲染。
 
 ## 修补已发布的 tag

@@ -16,6 +16,22 @@ funcmd demo/monaco/app.fun
 `Ui2Proxy` picks a free port, prints the URL, and opens the default browser.
 On a headless machine, open the printed URL manually.
 
+## Run in a native window
+
+`app-desktop.fun` serves the same page to the fun-ui GTK3/WebKit2GTK window
+instead of a browser, which is the quickest way to look at the page the way a
+desktop build shows it:
+
+```bash
+src/prj/lib.webkitgtk/build.sh        # or download the host from Releases
+funcmd demo/monaco/app-desktop.fun
+```
+
+It binds a fixed port (7801), sets `requireWebview = true` so a missing host
+library is an error rather than a browser fallback, and exits when the window
+closes. On macOS, point `form.hostLib` at `libui2wkwebview.dylib` (or the
+universal asset) and the same script works unchanged.
+
 ## Features
 
 - Syntax highlighting for **Fun**, **FD**, **JavaScript**, **HTML**, **CSS**,

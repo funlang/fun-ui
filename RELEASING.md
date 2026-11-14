@@ -59,6 +59,16 @@ git push origin vX.Y.Z
   permissions, or create the release by hand with the same summary.
 - To backfill a tag whose release was never created, run the `release`
   workflow manually with that tag name.
+
+- The same run builds the native host libraries and attaches them to the
+  release (`assets.yml`: `libui2webkitgtk-linux-x86_64.so`,
+  `libui2wkwebview-macos-universal.dylib`, plus `.sha256` files). A release
+  created with `GITHUB_TOKEN` does not trigger workflows on its own, which is
+  why the build is a job of the release run rather than a separate workflow.
+  If the assets are missing, run the `assets` workflow manually with the tag.
+  The Linux library is built against WebKit2GTK 4.1 on Ubuntu 22.04; the macOS
+  one is a universal arm64 + x86_64 binary.
+
 - Open the release page and confirm the notes render.
 
 ## Repairing a published tag
