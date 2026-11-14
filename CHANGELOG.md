@@ -6,6 +6,8 @@ All notable changes to fun-ui are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-11-14
+
 ### Added
 
 - `demo/monaco/`: an offline Monaco editor with a z-data toolbar and status
