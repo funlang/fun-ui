@@ -65,7 +65,9 @@ git push origin vX.Y.Z
   `libui2wkwebview-macos-universal.dylib`, plus `.sha256` files). A release
   created with `GITHUB_TOKEN` does not trigger workflows on its own, which is
   why the build is a job of the release run rather than a separate workflow.
-  If the assets are missing, run the `assets` workflow manually with the tag.
+  If the assets are missing, run the `assets` workflow manually with the tag,
+  or push a change to `.github/workflows/assets.yml` on `master`, which
+  republishes the assets of the latest release without moving its tag.
   The Linux library is built against WebKit2GTK 4.1 on Ubuntu 22.04; the macOS
   one is a universal arm64 + x86_64 binary.
 
