@@ -6,6 +6,29 @@ All notable changes to fun-ui are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.6] - 2026-11-14
+
+### Added
+
+- `demo/monaco/app-desktop.fun`: the Monaco demo in the native
+  GTK3/WebKit2GTK window. It binds a fixed port, sets `requireWebview = true`
+  so a missing host is an error instead of a browser fallback, and exits when
+  the window closes.
+- Prebuilt native host libraries on every release page:
+  `libui2webkitgtk-linux-x86_64.so` (Linux, GTK3 + WebKit2GTK 4.1) and
+  `libui2wkwebview-macos-universal.dylib` (macOS 11+, arm64 + x86_64), each
+  with a `.sha256` sum. A new `assets` workflow builds them as a job of the
+  release run, so a Fun project can show a window without a C or Objective-C
+  toolchain. `libwv2.dll` stays a Delphi build.
+
+### Changed
+
+- The READMEs document the prebuilt hosts: `form.hostLib` and the
+  `@ui2webkitdll` global, the WebKit2GTK 4.1 asset versus the 4.0-only
+  distributions, and why `libwv2.dll` is not among the assets.
+- `RELEASING.md` covers the host-library assets and how to backfill them with
+  the `assets` workflow.
+
 ## [1.0.5] - 2026-11-14
 
 ### Added
