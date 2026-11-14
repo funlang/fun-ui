@@ -157,7 +157,9 @@ jobs:
 
   macos-wkwebview:
     name: macos-wkwebview
-    runs-on: macos-14
+    # Not a pinned image: when GitHub retires one (macos-14), jobs that ask for
+    # it are cancelled before they start and the whole run shows "cancelled".
+    runs-on: macos-latest
     timeout-minutes: 30
     steps:
       - name: Check out fun-ui

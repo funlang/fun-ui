@@ -92,7 +92,8 @@ jobs:
 
   macos-wkwebview:
     name: macos-universal
-    runs-on: macos-14
+    # See ci.yml: a retired macOS image cancels the job before it starts.
+    runs-on: macos-latest
     timeout-minutes: 30
     steps:
       - name: Check out the release tag
